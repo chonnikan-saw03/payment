@@ -1,0 +1,1867 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>Payment Dashboard</title>
+<script src="https://cdn.jsdelivr.net/gh/tableau/extensions-api@main/lib/tableau.extensions.1.latest.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --header-bg: #14213d;
+  --header-bg-2: #1c2c52;
+  --page: #f5f6f8;
+  --surface: #ffffff;
+  --text-primary: #14213d;
+  --text-secondary: #5b6270;
+  --text-muted: #94989f;
+  --border: rgba(20, 33, 61, 0.10);
+  --gridline: #e7e9ee;
+
+  --accent-blue: #2a6fdb;
+  --accent-blue-tint: #cfe0f9;
+  --good: #1a9c53;
+  --bad: #e5484d;
+}
+
+* { box-sizing: border-box; }
+
+/* Some elements toggled via the "hidden" attribute (e.g. #branchList,
+   #channelChartWrap) also carry a component class that sets display:flex
+   for layout purposes. Both rules have equal specificity, so without this
+   the later flex rule would win and the "hidden" element would stay
+   visible -- chart and detail view would show at the same time instead of
+   swapping. This keeps [hidden] authoritative no matter what else applies. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--page);
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+}
+
+.header {
+  background: linear-gradient(135deg, var(--header-bg), var(--header-bg-2));
+  color: #fff;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.header-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.header-title .subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.header-controls select {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.header-controls select option { color: #14213d; }
+
+.header-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.header-download-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.dashboard {
+  padding: 10px 24px 14px;
+}
+
+.status {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.status.hidden { display: none; }
+.status.error { color: var(--bad); }
+
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04);
+  margin-top: 8px;
+}
+
+.kpi-main .label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.kpi-main .value {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.kpi-main .delta {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.delta.up { color: var(--good); }
+.delta.down { color: var(--bad); }
+
+.delta .vs {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 12px;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04);
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Equal-width, equal-height (stretch) rows -- every card in a row is the
+   same size, and card content flexes to fill it, so no card is left with
+   dead space just because a sibling happens to have more content. */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+  .kpi-row { grid-template-columns: 1fr; }
+}
+
+.kpi-row .kpi-card { margin-top: 0; }
+
+.charts-row-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+  align-items: stretch;
+}
+
+@media (max-width: 860px) {
+  .charts-row-2 { grid-template-columns: 1fr; }
+}
+
+.charts-row-2 .panel {
+  margin-top: 0;
+}
+
+.charts-row-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+  align-items: stretch;
+}
+
+@media (max-width: 1100px) {
+  .charts-row-3 { grid-template-columns: 1fr; }
+}
+
+.charts-row-3 .panel {
+  margin-top: 0;
+}
+
+.panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.bar-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.channel-top-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.channel-top-legend .item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.channel-top-legend .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.channel-donut-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+.channel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.panel-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  margin-bottom: 10px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--page);
+  margin-bottom: 10px;
+}
+
+.view-toggle-btn {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.view-toggle-btn:hover {
+  color: var(--accent-blue);
+}
+
+.view-toggle-btn.active {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(20, 33, 61, 0.12);
+}
+
+.branch-row {
+  margin-bottom: 4px;
+}
+
+.branch-row .name-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.branch-row .name {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-row .value-share {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.branch-row .value {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.branch-row .share-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #cffafe;
+  color: #0e7490;
+  white-space: nowrap;
+}
+
+.branch-row .bar-track {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--gridline);
+  overflow: hidden;
+}
+
+.branch-row .bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: #0891b2;
+}
+
+.trend-svg {
+  width: 100%;
+  height: 190px;
+  display: block;
+}
+
+.trend-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--header-bg);
+  color: #fff;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transform: translate(-50%, -130%);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.trend-wrap { position: relative; }
+
+.ytd-svg {
+  width: 100%;
+  height: 190px;
+  display: block;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--gridline);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--gridline);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+
+.data-table td.col-name,
+.data-table th.col-name {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.data-table td.col-num,
+.data-table th.col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table td.growth-up { color: var(--good); font-weight: 600; }
+.data-table td.growth-down { color: var(--bad); font-weight: 600; }
+
+/* MCH2 category names are long Thai descriptions -- let them wrap instead
+   of forcing the table wider than its (narrow, 3-column-row) panel and
+   triggering a horizontal scrollbar. */
+#mch2TableWrap .data-table td.col-name,
+#mch2TableWrap .data-table th.col-name {
+  white-space: normal;
+  word-break: break-word;
+}
+</style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-title">
+      <div class="header-icon">฿</div>
+      <div>
+        <h1>PAYMENT DASHBOARD</h1>
+        <div class="subtitle" id="subtitleText">ds_vdo_payment_article_fact · ตัวอย่าง (sample data)</div>
+      </div>
+    </div>
+    <div class="header-controls">
+      <span>เดือน</span>
+      <select id="monthSelect"></select>
+      <button type="button" class="header-download-btn" id="downloadAllBtn" title="ดาวน์โหลดรายละเอียดทั้งหมด (Excel)">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 1.5v9M4.5 7l3.5 3.5L11.5 7" />
+          <path d="M2 12.5v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" />
+        </svg>
+        DOWNLOADS
+      </button>
+    </div>
+  </header>
+
+  <div class="dashboard">
+    <div id="status" class="status hidden"></div>
+
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="kpi-main">
+          <div class="label">TOTAL PAYMENT MTD</div>
+          <div class="value" id="kpiValue">-</div>
+          <div class="delta" id="kpiDelta"></div>
+        </div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-main">
+          <div class="label">TOTAL PAYMENT YTD</div>
+          <div class="value" id="kpiYtdValue">-</div>
+          <div class="delta" id="kpiYtdDelta"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="charts-row-2">
+      <div class="panel">
+        <div class="panel-title">DAILY TREND</div>
+        <div class="panel-subtitle">Payment รายวันในเดือนที่เลือก, THB</div>
+        <div class="trend-wrap">
+          <svg class="trend-svg" id="trendSvg" viewBox="0 0 640 190" preserveAspectRatio="none"></svg>
+          <div class="trend-tooltip" id="trendTooltip"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">MONTHLY PAYMENT (YTD)</div>
+        <div class="panel-subtitle" id="ytdSubtitle">สะสมตั้งแต่ต้นปีถึงเดือนที่เลือก, THB</div>
+        <svg class="ytd-svg" id="ytdChartSvg" viewBox="0 0 640 190" preserveAspectRatio="none"></svg>
+      </div>
+    </div>
+
+    <div class="charts-row-3">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">PAYMENT BY BRANCH</div>
+            <div class="panel-subtitle">Share of payment ในเดือนที่เลือก, THB</div>
+          </div>
+        </div>
+        <div class="view-toggle" id="branchViewToggle">
+          <button type="button" class="view-toggle-btn active" data-view="chart">Summary</button>
+          <button type="button" class="view-toggle-btn" data-view="detail">รายละเอียด</button>
+        </div>
+        <div id="branchList" class="bar-list"></div>
+        <div class="table-wrap" id="branchTableWrap" hidden>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-name">Branch</th>
+                <th class="col-num">Payment (THB)</th>
+                <th class="col-num">% Share</th>
+                <th class="col-num">% Growth</th>
+              </tr>
+            </thead>
+            <tbody id="branchTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">PAYMENT BY MCH2</div>
+            <div class="panel-subtitle">หมวดหมู่สินค้า MCH2 (Top 10 + อื่นๆ) ในเดือนที่เลือก, THB</div>
+          </div>
+        </div>
+        <div class="view-toggle" id="mch2ViewToggle">
+          <button type="button" class="view-toggle-btn active" data-view="chart">Summary</button>
+          <button type="button" class="view-toggle-btn" data-view="detail">รายละเอียด</button>
+        </div>
+        <div id="mch2List" class="bar-list"></div>
+        <div class="table-wrap" id="mch2TableWrap" hidden>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-name">MCH2</th>
+                <th class="col-num">Payment (THB)</th>
+                <th class="col-num">% Share</th>
+                <th class="col-num">% Growth</th>
+              </tr>
+            </thead>
+            <tbody id="mch2TableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">PAYMENT BY CHANNEL</div>
+            <div class="panel-subtitle">Share of payment ในเดือนที่เลือก, THB</div>
+          </div>
+        </div>
+        <div class="view-toggle" id="channelViewToggle">
+          <button type="button" class="view-toggle-btn active" data-view="chart">Summary</button>
+          <button type="button" class="view-toggle-btn" data-view="detail">รายละเอียด</button>
+        </div>
+        <div id="channelChartWrap" class="channel-body">
+          <div class="channel-top-legend" id="channelTopLegend"></div>
+          <svg class="channel-donut-svg" id="channelDonutSvg" viewBox="0 0 460 300" preserveAspectRatio="xMidYMid meet"></svg>
+        </div>
+
+        <div class="table-wrap" id="channelTableWrap" hidden>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-name">Channel</th>
+                <th class="col-num">Payment (THB)</th>
+                <th class="col-num">% Share</th>
+                <th class="col-num">% Growth</th>
+              </tr>
+            </thead>
+            <tbody id="channelTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">PAYMENT DETAIL</div>
+          <div class="panel-subtitle">ตัวอย่าง 10 แถวแรกจาก ds_vdo_payment_article_fact (ทุกคอลัมน์)</div>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>VENDOR_ID</th>
+              <th>VENDOR_NAME</th>
+              <th>PAYMENT_DATE</th>
+              <th>BRANCH</th>
+              <th>SLS_GRP_DESC</th>
+              <th>BRAND</th>
+              <th>MCH3</th>
+              <th>MCH2</th>
+              <th>MCH1</th>
+              <th>MC</th>
+              <th>ARTICLE_ID</th>
+              <th>ARTICLE_NAME_TH</th>
+              <th>ITEM_FLAG</th>
+              <th class="col-num">PAYMENT_INC_TAX</th>
+              <th>START_DATE</th>
+              <th>END_DATE</th>
+            </tr>
+          </thead>
+          <tbody id="rawDataTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------------
+  // SAMPLE DATA — this file is a visual preview only. It fabricates monthly
+  // /daily/branch numbers shaped like ds_vdo_payment_article_fact so the
+  // layout and interactions can be reviewed before wiring up a real
+  // BigQuery-backed data source.
+  // ---------------------------------------------------------------------
+
+  var BRANCHES = [
+    "สาขารัชดา", "สาขาพัทยา", "สาขาพุทธมณฑล", "สาขาบางนา", "สาขาเชียงใหม่",
+    "สาขาหัวหิน", "สาขาราชพฤกษ์", "สาขารังสิต-สำนักงานใหญ่", "สาขาพระราม 2",
+    "สาขาสุราษฎร์ธานี", "สาขาอุดรธานี", "สาขาโคราช", "ECOMMERCE",
+  ];
+
+  // Relative share matches the real distribution queried from
+  // ds_vdo_payment_article_fact (Showroom ~83%, Anyhome ~12%, ... ).
+  var CHANNELS = [
+    { channel: "Showroom", weight: 0.830 },
+    { channel: "Anyhome", weight: 0.122 },
+    { channel: "Website", weight: 0.035 },
+    { channel: "Marketplace", weight: 0.0035 },
+    { channel: "Partner", weight: 0.0015 },
+  ];
+  var CHANNEL_COLORS = ["#16a34a", "#ea580c", "#7c3aed", "#db2777", "#78716c"];
+
+  // Top 10 by relative share matches the real distribution queried from
+  // ds_vdo_payment_article_fact (136 distinct mch2 values total; the long
+  // tail beyond the top 10 is folded into "อื่นๆ").
+  var MCH2_CATEGORIES = [
+    { mch2: "กระเบื้อง", weight: 0.4242 },
+    { mch2: "เครื่องสุขภัณฑ์", weight: 0.0977 },
+    { mch2: "ก๊อกน้ำ/ฝักบัว", weight: 0.0669 },
+    { mch2: "เครื่องใช้ไฟฟ้าในครัว", weight: 0.0391 },
+    { mch2: "เฟอร์นิเจอร์ครัวสั่งทำ", weight: 0.0219 },
+    { mch2: "ซิงค์และอุปกรณ์", weight: 0.0217 },
+    { mch2: "อะไหล่ห้องน้ำ", weight: 0.0177 },
+    { mch2: "อ่างอาบน้ำ", weight: 0.0168 },
+    { mch2: "เครื่องใช้ไฟฟ้าหมวดเครื่องทำความเย็น", weight: 0.0157 },
+    { mch2: "อุปกรณ์ห้องน้ำ", weight: 0.0151 },
+    { mch2: "อื่นๆ", weight: 0.2632 },
+  ];
+
+  function seededRandom(seed) {
+    var s = seed % 2147483647;
+    if (s <= 0) s += 2147483646;
+    return function () {
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+  }
+
+  var rand = seededRandom(42);
+
+  function daysInMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+  }
+
+  function buildSampleData() {
+    var months = [];
+    var baseDate = new Date(2026, 7, 1); // 2026-08-01, matches sample rows queried earlier
+    // 25 months back so every selectable month has a full same-period range
+    // in the prior year available for the YTD %growth comparison.
+    for (var i = 24; i >= 0; i--) {
+      var d = new Date(baseDate.getFullYear(), baseDate.getMonth() - i, 1);
+      var monthKey = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+      var seasonal = 1 + 0.15 * Math.sin(i / 2);
+      var total = Math.round((6500000 + rand() * 2500000) * seasonal);
+      months.push({ month: monthKey, total: total, year: d.getFullYear(), monthNum: d.getMonth() + 1 });
+    }
+
+    var dailyByMonth = {};
+    var branchByMonth = {};
+    var channelByMonth = {};
+    var mch2ByMonth = {};
+    months.forEach(function (m) {
+      var nDays = daysInMonth(m.year, m.monthNum);
+      var daily = [];
+      var remaining = m.total;
+      var weights = [];
+      var weightSum = 0;
+      for (var d = 1; d <= nDays; d++) {
+        var isWeekend = false; // no real calendar weighting needed for a preview
+        var w = 0.6 + rand() * 0.8;
+        weights.push(w);
+        weightSum += w;
+      }
+      for (var d2 = 1; d2 <= nDays; d2++) {
+        var value = Math.round((weights[d2 - 1] / weightSum) * m.total);
+        daily.push({
+          payment_date: m.month + "-" + String(d2).padStart(2, "0"),
+          total: value,
+        });
+      }
+      dailyByMonth[m.month] = daily;
+
+      var branchWeights = BRANCHES.map(function () { return rand(); });
+      var bwSum = branchWeights.reduce(function (a, b) { return a + b; }, 0);
+      var branchRows = BRANCHES.map(function (b, idx) {
+        return { branch: b, total: Math.round((branchWeights[idx] / bwSum) * m.total) };
+      });
+      branchRows.sort(function (a, b) { return b.total - a.total; });
+      branchByMonth[m.month] = branchRows;
+
+      var channelRows = CHANNELS.map(function (c) {
+        var jitter = 1 + (rand() - 0.5) * 0.1;
+        return { channel: c.channel, total: Math.round(c.weight * jitter * m.total) };
+      });
+      channelByMonth[m.month] = channelRows;
+
+      var mch2Rows = MCH2_CATEGORIES.map(function (c) {
+        var jitter = 1 + (rand() - 0.5) * 0.1;
+        return { mch2: c.mch2, total: Math.round(c.weight * jitter * m.total) };
+      });
+      // "อื่นๆ" (the long tail beyond the top 10) always sorts last, even
+      // though its combined value can outrank any single real category.
+      var mch2Others = mch2Rows.filter(function (r) { return r.mch2 === "อื่นๆ"; });
+      var mch2Top = mch2Rows.filter(function (r) { return r.mch2 !== "อื่นๆ"; });
+      mch2Top.sort(function (a, b) { return b.total - a.total; });
+      mch2ByMonth[m.month] = mch2Top.concat(mch2Others);
+    });
+
+    return {
+      months: months,
+      dailyByMonth: dailyByMonth,
+      branchByMonth: branchByMonth,
+      channelByMonth: channelByMonth,
+      mch2ByMonth: mch2ByMonth,
+    };
+  }
+
+  var DATA = buildSampleData();
+
+  // ---------------------------------------------------------------------
+  // Formatting helpers
+  // ---------------------------------------------------------------------
+
+  function formatAbbrev(n) {
+    if (!isFinite(n)) return "-";
+    var sign = n < 0 ? "-" : "";
+    var abs = Math.abs(n);
+    if (abs >= 1e6) return sign + (abs / 1e6).toFixed(2) + "M";
+    if (abs >= 1e3) return sign + (abs / 1e3).toFixed(1) + "K";
+    return sign + Math.round(abs).toLocaleString("en-US");
+  }
+
+  function formatFull(n) {
+    if (!isFinite(n)) return "-";
+    return Math.round(n).toLocaleString("en-US");
+  }
+
+  function monthLabel(monthKey) {
+    var parts = monthKey.split("-");
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    return d.toLocaleDateString("th-TH", { month: "short", year: "numeric" });
+  }
+
+  function formatMillions(n) {
+    if (!isFinite(n)) return "-";
+    return (n / 1e6).toFixed(2) + "M";
+  }
+
+  function monthShortLabel(monthKey) {
+    var parts = monthKey.split("-");
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    return d.toLocaleDateString("th-TH", { month: "short" });
+  }
+
+  // Catmull-Rom-to-Bezier spline through every point, so the trend reads as
+  // a smooth curve instead of a jagged day-to-day polyline.
+  function smoothPath(points) {
+    if (points.length < 2) return "";
+    var d = "M" + points[0][0] + "," + points[0][1];
+    for (var i = 0; i < points.length - 1; i++) {
+      var p0 = points[i === 0 ? i : i - 1];
+      var p1 = points[i];
+      var p2 = points[i + 1];
+      var p3 = points[i + 2 < points.length ? i + 2 : i + 1];
+      var cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+      var cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+      var cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+      var cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += " C" + cp1x + "," + cp1y + " " + cp2x + "," + cp2y + " " + p2[0] + "," + p2[1];
+    }
+    return d;
+  }
+
+  // ---------------------------------------------------------------------
+  // Month selector
+  // ---------------------------------------------------------------------
+
+  var monthSelect = document.getElementById("monthSelect");
+  DATA.months.forEach(function (m) {
+    var opt = document.createElement("option");
+    opt.value = m.month;
+    opt.textContent = monthLabel(m.month);
+    monthSelect.appendChild(opt);
+  });
+  monthSelect.value = DATA.months[DATA.months.length - 1].month;
+  monthSelect.addEventListener("change", function () { render(monthSelect.value); });
+
+  // Every month in DATA.months that falls in the same year as selectedMonth,
+  // up to and including it -- shared by the KPI card's YTD figure and the
+  // YTD bar chart below it.
+  function getYtdMonths(selectedMonth) {
+    var selectedEntry = DATA.months.filter(function (m) { return m.month === selectedMonth; })[0];
+    return DATA.months.filter(function (m) {
+      return m.year === selectedEntry.year && m.monthNum <= selectedEntry.monthNum;
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // KPI card
+  // ---------------------------------------------------------------------
+
+  function renderKpi(selectedMonth) {
+    var idx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var current = DATA.months[idx];
+    var prev = idx > 0 ? DATA.months[idx - 1] : null;
+
+    document.getElementById("kpiValue").textContent = formatAbbrev(current.total);
+    document.getElementById("kpiValue").title = formatFull(current.total) + " บาท";
+
+    var deltaEl = document.getElementById("kpiDelta");
+    if (prev && prev.total) {
+      var growth = ((current.total - prev.total) / prev.total) * 100;
+      var isUp = growth >= 0;
+      deltaEl.className = "delta " + (isUp ? "up" : "down");
+      deltaEl.innerHTML =
+        (isUp ? "▲ " : "▼ ") + Math.abs(growth).toFixed(2) + "%" +
+        ' <span class="vs">vs ' + monthLabel(prev.month) + ": " + formatAbbrev(prev.total) + "</span>";
+    } else {
+      deltaEl.className = "delta";
+      deltaEl.innerHTML = '<span class="vs">ไม่มีข้อมูลเดือนก่อนหน้าเปรียบเทียบ</span>';
+    }
+
+    var ytdMonths = getYtdMonths(selectedMonth);
+    var ytdTotal = ytdMonths.reduce(function (a, m) { return a + m.total; }, 0);
+    document.getElementById("kpiYtdValue").textContent = formatAbbrev(ytdTotal);
+    document.getElementById("kpiYtdValue").title = formatFull(ytdTotal) + " บาท";
+
+    var selectedEntry = ytdMonths[ytdMonths.length - 1];
+    var prevYtdMonths = DATA.months.filter(function (m) {
+      return m.year === selectedEntry.year - 1 && m.monthNum <= selectedEntry.monthNum;
+    });
+    var prevYtdTotal = prevYtdMonths.reduce(function (a, m) { return a + m.total; }, 0);
+
+    var ytdDeltaEl = document.getElementById("kpiYtdDelta");
+    if (prevYtdMonths.length === ytdMonths.length && prevYtdTotal) {
+      var ytdGrowth = ((ytdTotal - prevYtdTotal) / prevYtdTotal) * 100;
+      var ytdIsUp = ytdGrowth >= 0;
+      ytdDeltaEl.className = "delta " + (ytdIsUp ? "up" : "down");
+      ytdDeltaEl.innerHTML =
+        (ytdIsUp ? "▲ " : "▼ ") + Math.abs(ytdGrowth).toFixed(2) + "%" +
+        ' <span class="vs">vs YTD ปีก่อน: ' + formatAbbrev(prevYtdTotal) + "</span>";
+    } else {
+      ytdDeltaEl.className = "delta";
+      ytdDeltaEl.innerHTML = '<span class="vs">ไม่มีข้อมูล YTD ปีก่อนเปรียบเทียบ</span>';
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Branch bar list
+  // ---------------------------------------------------------------------
+
+  function renderBranchList(selectedMonth) {
+    var rows = DATA.branchByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+    var maxVal = rows.length ? rows[0].total : 0;
+
+    var container = document.getElementById("branchList");
+    container.innerHTML = "";
+
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var barPct = maxVal ? (r.total / maxVal) * 100 : 0;
+
+      var row = document.createElement("div");
+      row.className = "branch-row";
+
+      var nameLine = document.createElement("div");
+      nameLine.className = "name-line";
+
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = r.branch;
+      name.title = r.branch;
+
+      var valueShare = document.createElement("div");
+      valueShare.className = "value-share";
+
+      var value = document.createElement("span");
+      value.className = "value";
+      value.textContent = formatFull(r.total);
+
+      var badge = document.createElement("span");
+      badge.className = "share-badge";
+      badge.textContent = share.toFixed(1) + "%";
+
+      valueShare.appendChild(value);
+      valueShare.appendChild(badge);
+
+      nameLine.appendChild(name);
+      nameLine.appendChild(valueShare);
+
+      var track = document.createElement("div");
+      track.className = "bar-track";
+      var fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.width = barPct + "%";
+      track.appendChild(fill);
+
+      row.appendChild(nameLine);
+      row.appendChild(track);
+      container.appendChild(row);
+    });
+  }
+
+  function renderBranchTable(selectedMonth) {
+    var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var rows = DATA.branchByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+
+    var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
+    var prevRows = prevMonthKey ? DATA.branchByMonth[prevMonthKey] : null;
+
+    var tbody = document.getElementById("branchTableBody");
+    tbody.innerHTML = "";
+
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var prevRow = prevRows && prevRows.filter(function (p) { return p.branch === r.branch; })[0];
+      var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
+
+      var tr = document.createElement("tr");
+
+      var tdName = document.createElement("td");
+      tdName.className = "col-name";
+      tdName.textContent = r.branch;
+
+      var tdValue = document.createElement("td");
+      tdValue.className = "col-num";
+      tdValue.textContent = formatFull(r.total);
+
+      var tdShare = document.createElement("td");
+      tdShare.className = "col-num";
+      tdShare.textContent = share.toFixed(1) + "%";
+
+      var tdGrowth = document.createElement("td");
+      tdGrowth.className = "col-num";
+      if (growth === null) {
+        tdGrowth.textContent = "-";
+      } else {
+        var isUp = growth >= 0;
+        tdGrowth.className += isUp ? " growth-up" : " growth-down";
+        tdGrowth.textContent = (isUp ? "▲ +" : "▼ ") + growth.toFixed(2) + "%";
+      }
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdValue);
+      tr.appendChild(tdShare);
+      tr.appendChild(tdGrowth);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Chart <-> Detail table toggle for the branch panel
+  var branchView = "chart";
+  var branchViewToggle = document.getElementById("branchViewToggle");
+  branchViewToggle.addEventListener("click", function (e) {
+    var btn = e.target.closest(".view-toggle-btn");
+    if (!btn) return;
+    branchView = btn.getAttribute("data-view");
+    branchViewToggle.querySelectorAll(".view-toggle-btn").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+    applyBranchView();
+  });
+
+  function applyBranchView() {
+    document.getElementById("branchList").hidden = branchView !== "chart";
+    document.getElementById("branchTableWrap").hidden = branchView !== "detail";
+  }
+
+  // ---------------------------------------------------------------------
+  // Sales channel donut
+  // ---------------------------------------------------------------------
+
+  function polarPoint(cx, cy, r, angleRad) {
+    return [cx + r * Math.cos(angleRad), cy + r * Math.sin(angleRad)];
+  }
+
+  // fraction 0..1 around the circle, 0 = 12 o'clock, increasing clockwise
+  function fracToAngle(frac) {
+    return frac * 2 * Math.PI - Math.PI / 2;
+  }
+
+  function describeDonutArc(cx, cy, r, startFrac, endFrac) {
+    var start = polarPoint(cx, cy, r, fracToAngle(startFrac));
+    var end = polarPoint(cx, cy, r, fracToAngle(endFrac));
+    var largeArc = (endFrac - startFrac) > 0.5 ? 1 : 0;
+    return "M" + start[0] + "," + start[1] + " A" + r + "," + r + " 0 " + largeArc + " 1 " + end[0] + "," + end[1];
+  }
+
+  function renderChannelPie(selectedMonth) {
+    var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var rows = DATA.channelByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+
+    var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
+    var prevRows = prevMonthKey ? DATA.channelByMonth[prevMonthKey] : null;
+
+    // Top legend row: just a colored dot + channel name
+    var legendRow = document.getElementById("channelTopLegend");
+    legendRow.innerHTML = "";
+    rows.forEach(function (r, i) {
+      var item = document.createElement("div");
+      item.className = "item";
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = CHANNEL_COLORS[i % CHANNEL_COLORS.length];
+      var text = document.createElement("span");
+      text.textContent = r.channel;
+      item.appendChild(dot);
+      item.appendChild(text);
+      legendRow.appendChild(item);
+    });
+
+    var svg = document.getElementById("channelDonutSvg");
+    svg.innerHTML = "";
+
+    var cx = 230, cy = 150, R = 58, strokeW = 14;
+    var gapFrac = 0.012;
+
+    var cumulative = 0;
+    var segments = rows.map(function (r, i) {
+      var pctFrac = total ? r.total / total : 0;
+      var startFrac = cumulative;
+      var endFrac = cumulative + pctFrac;
+      var midFrac = startFrac + pctFrac / 2;
+      cumulative = endFrac;
+
+      var drawStart = startFrac, drawEnd = endFrac;
+      if (pctFrac > gapFrac * 1.5) {
+        drawStart = startFrac + gapFrac / 2;
+        drawEnd = endFrac - gapFrac / 2;
+      }
+
+      var angle = fracToAngle(midFrac);
+      var edge = polarPoint(cx, cy, R + strokeW / 2, angle);
+      var side = Math.cos(angle) >= 0 ? "right" : "left";
+      var prevRow = prevRows && prevRows.filter(function (p) { return p.channel === r.channel; })[0];
+      var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
+
+      return {
+        row: r, color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+        pct: pctFrac * 100, drawStart: drawStart, drawEnd: drawEnd,
+        angle: angle, edge: edge, side: side, growth: growth,
+      };
+    });
+
+    // A handful of thin slivers next to one dominant slice all fall
+    // geometrically on the same side, leaving the other side of the chart
+    // empty. Keep any large slice (>=30%) on its natural side, but split
+    // the small slivers evenly left/right instead of letting them pile up
+    // together, so callouts use both sides of the chart.
+    (function balanceSides() {
+      var MINOR_PCT = 30;
+      var counts = { left: 0, right: 0 };
+      segments.forEach(function (s) { if (s.pct >= MINOR_PCT) counts[s.side]++; });
+
+      var minors = segments.filter(function (s) { return s.pct < MINOR_PCT; });
+      minors.sort(function (a, b) { return a.angle - b.angle; });
+      minors.forEach(function (seg) {
+        seg.side = counts.left <= counts.right ? "left" : "right";
+        counts[seg.side]++;
+      });
+    })();
+
+    // Donut ring: one arc path per segment
+    segments.forEach(function (seg) {
+      var path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", describeDonutArc(cx, cy, R, seg.drawStart, seg.drawEnd));
+      path.setAttribute("fill", "none");
+      path.style.stroke = seg.color;
+      path.setAttribute("stroke-width", String(strokeW));
+      path.setAttribute("stroke-linecap", "butt");
+      svg.appendChild(path);
+    });
+
+    // Center total
+    var centerValue = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    centerValue.setAttribute("x", cx);
+    centerValue.setAttribute("y", cy);
+    centerValue.setAttribute("text-anchor", "middle");
+    centerValue.setAttribute("font-size", "24");
+    centerValue.setAttribute("font-weight", "700");
+    centerValue.style.fill = "var(--text-primary)";
+    centerValue.textContent = formatAbbrev(total);
+    svg.appendChild(centerValue);
+
+    var centerLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    centerLabel.setAttribute("x", cx);
+    centerLabel.setAttribute("y", cy + 18);
+    centerLabel.setAttribute("text-anchor", "middle");
+    centerLabel.setAttribute("font-size", "12");
+    centerLabel.style.fill = "var(--text-muted)";
+    centerLabel.textContent = "Total Payment";
+    svg.appendChild(centerLabel);
+
+    // Leader-line labels, grouped left/right of the donut. Labels start at
+    // their segment's own edge height and only get nudged apart from their
+    // neighbors when they'd otherwise overlap -- clustered slices (e.g. many
+    // thin slivers near the same angle) stay close together near where
+    // their slice actually is, instead of fanning out across the full
+    // height of the chart, which is what made the leader lines confusing.
+    var minSpacing = 40;
+    var boundTop = 16, boundBottom = 284;
+
+    ["left", "right"].forEach(function (side) {
+      var group = segments.filter(function (s) { return s.side === side; });
+      group.sort(function (a, b) { return a.edge[1] - b.edge[1]; });
+      if (!group.length) return;
+
+      var ys = group.map(function (s) { return s.edge[1]; });
+      for (var i = 1; i < ys.length; i++) {
+        if (ys[i] - ys[i - 1] < minSpacing) ys[i] = ys[i - 1] + minSpacing;
+      }
+      // Recenter the whole stack back onto its natural average position,
+      // then clamp to the canvas so it never bleeds off the top/bottom.
+      var naturalAvg = group.reduce(function (a, s) { return a + s.edge[1]; }, 0) / group.length;
+      var stackedAvg = ys.reduce(function (a, y) { return a + y; }, 0) / ys.length;
+      ys = ys.map(function (y) { return y + (naturalAvg - stackedAvg); });
+      if (ys[0] < boundTop) {
+        var upShift = boundTop - ys[0];
+        ys = ys.map(function (y) { return y + upShift; });
+      }
+      if (ys[ys.length - 1] > boundBottom) {
+        var downShift = ys[ys.length - 1] - boundBottom;
+        ys = ys.map(function (y) { return y - downShift; });
+      }
+
+      group.forEach(function (seg, i) {
+        var labelY = ys[i];
+        var elbowX = cx + (side === "right" ? 1 : -1) * (R + strokeW / 2 + 18);
+        var labelX = cx + (side === "right" ? 1 : -1) * (R + strokeW / 2 + 30);
+
+        var leader = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        leader.setAttribute("points", seg.edge[0] + "," + seg.edge[1] + " " + elbowX + "," + labelY + " " + labelX + "," + labelY);
+        leader.setAttribute("fill", "none");
+        leader.style.stroke = "var(--text-muted)";
+        leader.setAttribute("stroke-width", "1");
+        svg.appendChild(leader);
+
+        var anchor = side === "right" ? "start" : "end";
+        var textX = labelX + (side === "right" ? 4 : -4);
+
+        var nameLine = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        nameLine.setAttribute("x", textX);
+        nameLine.setAttribute("y", labelY - 3);
+        nameLine.setAttribute("text-anchor", anchor);
+        nameLine.setAttribute("font-size", "12");
+        nameLine.setAttribute("font-weight", "700");
+        nameLine.style.fill = "var(--text-primary)";
+        nameLine.textContent = seg.row.channel + "  " + seg.pct.toFixed(2) + "%";
+        svg.appendChild(nameLine);
+
+        var detailLine = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        detailLine.setAttribute("x", textX);
+        detailLine.setAttribute("y", labelY + 12);
+        detailLine.setAttribute("text-anchor", anchor);
+        detailLine.setAttribute("font-size", "11");
+
+        if (seg.growth === null) {
+          detailLine.style.fill = "var(--text-muted)";
+          detailLine.textContent = "฿" + formatMillions(seg.row.total);
+        } else {
+          var isUp = seg.growth >= 0;
+          var tspanValue = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspanValue.style.fill = "var(--text-muted)";
+          tspanValue.textContent = "฿" + formatMillions(seg.row.total) + " (";
+          var tspanGrowth = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspanGrowth.style.fill = isUp ? "var(--good)" : "var(--bad)";
+          tspanGrowth.textContent = (isUp ? "▲ +" : "▼ ") + seg.growth.toFixed(2) + "%";
+          var tspanClose = document.createElementNS("http://www.w3.org/2000/svg", "tspan");
+          tspanClose.style.fill = "var(--text-muted)";
+          tspanClose.textContent = ")";
+          detailLine.appendChild(tspanValue);
+          detailLine.appendChild(tspanGrowth);
+          detailLine.appendChild(tspanClose);
+        }
+        svg.appendChild(detailLine);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Sales channel detail table
+  // ---------------------------------------------------------------------
+
+  function renderChannelTable(selectedMonth) {
+    var idx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var rows = DATA.channelByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+
+    var prevMonthKey = idx > 0 ? DATA.months[idx - 1].month : null;
+    var prevRows = prevMonthKey ? DATA.channelByMonth[prevMonthKey] : null;
+
+    var tbody = document.getElementById("channelTableBody");
+    tbody.innerHTML = "";
+
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var prevRow = prevRows && prevRows.filter(function (p) { return p.channel === r.channel; })[0];
+      var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
+
+      var tr = document.createElement("tr");
+
+      var tdName = document.createElement("td");
+      tdName.className = "col-name";
+      tdName.textContent = r.channel;
+
+      var tdValue = document.createElement("td");
+      tdValue.className = "col-num";
+      tdValue.textContent = formatFull(r.total);
+
+      var tdShare = document.createElement("td");
+      tdShare.className = "col-num";
+      tdShare.textContent = share.toFixed(1) + "%";
+
+      var tdGrowth = document.createElement("td");
+      tdGrowth.className = "col-num";
+      if (growth === null) {
+        tdGrowth.textContent = "-";
+      } else {
+        var isUp = growth >= 0;
+        tdGrowth.className += isUp ? " growth-up" : " growth-down";
+        tdGrowth.textContent = (isUp ? "▲ +" : "▼ ") + growth.toFixed(2) + "%";
+      }
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdValue);
+      tr.appendChild(tdShare);
+      tr.appendChild(tdGrowth);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Chart <-> Detail table toggle for the sales channel panel
+  var channelView = "chart";
+  var channelViewToggle = document.getElementById("channelViewToggle");
+  channelViewToggle.addEventListener("click", function (e) {
+    var btn = e.target.closest(".view-toggle-btn");
+    if (!btn) return;
+    channelView = btn.getAttribute("data-view");
+    channelViewToggle.querySelectorAll(".view-toggle-btn").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+    applyChannelView();
+  });
+
+  function applyChannelView() {
+    document.getElementById("channelChartWrap").hidden = channelView !== "chart";
+    document.getElementById("channelTableWrap").hidden = channelView !== "detail";
+  }
+
+  // ---------------------------------------------------------------------
+  // Payment by MCH2 (top 10 + อื่นๆ)
+  // ---------------------------------------------------------------------
+
+  function renderMch2List(selectedMonth) {
+    var rows = DATA.mch2ByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+    var maxVal = rows.length ? Math.max.apply(null, rows.map(function (r) { return r.total; })) : 0;
+
+    var container = document.getElementById("mch2List");
+    container.innerHTML = "";
+
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var barPct = maxVal ? (r.total / maxVal) * 100 : 0;
+
+      var row = document.createElement("div");
+      row.className = "branch-row";
+
+      var nameLine = document.createElement("div");
+      nameLine.className = "name-line";
+
+      var name = document.createElement("div");
+      name.className = "name";
+      name.textContent = r.mch2;
+      name.title = r.mch2;
+
+      var valueShare = document.createElement("div");
+      valueShare.className = "value-share";
+
+      var value = document.createElement("span");
+      value.className = "value";
+      value.textContent = formatFull(r.total);
+
+      var badge = document.createElement("span");
+      badge.className = "share-badge";
+      badge.textContent = share.toFixed(1) + "%";
+
+      valueShare.appendChild(value);
+      valueShare.appendChild(badge);
+
+      nameLine.appendChild(name);
+      nameLine.appendChild(valueShare);
+
+      var track = document.createElement("div");
+      track.className = "bar-track";
+      var fill = document.createElement("div");
+      fill.className = "bar-fill";
+      fill.style.width = barPct + "%";
+      track.appendChild(fill);
+
+      row.appendChild(nameLine);
+      row.appendChild(track);
+      container.appendChild(row);
+    });
+  }
+
+  function renderMch2Table(selectedMonth) {
+    var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var rows = DATA.mch2ByMonth[selectedMonth];
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+
+    var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
+    var prevRows = prevMonthKey ? DATA.mch2ByMonth[prevMonthKey] : null;
+
+    var tbody = document.getElementById("mch2TableBody");
+    tbody.innerHTML = "";
+
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var prevRow = prevRows && prevRows.filter(function (p) { return p.mch2 === r.mch2; })[0];
+      var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
+
+      var tr = document.createElement("tr");
+
+      var tdName = document.createElement("td");
+      tdName.className = "col-name";
+      tdName.textContent = r.mch2;
+
+      var tdValue = document.createElement("td");
+      tdValue.className = "col-num";
+      tdValue.textContent = formatFull(r.total);
+
+      var tdShare = document.createElement("td");
+      tdShare.className = "col-num";
+      tdShare.textContent = share.toFixed(1) + "%";
+
+      var tdGrowth = document.createElement("td");
+      tdGrowth.className = "col-num";
+      if (growth === null) {
+        tdGrowth.textContent = "-";
+      } else {
+        var isUp = growth >= 0;
+        tdGrowth.className += isUp ? " growth-up" : " growth-down";
+        tdGrowth.textContent = (isUp ? "▲ +" : "▼ ") + growth.toFixed(2) + "%";
+      }
+
+      tr.appendChild(tdName);
+      tr.appendChild(tdValue);
+      tr.appendChild(tdShare);
+      tr.appendChild(tdGrowth);
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Chart <-> Detail table toggle for the MCH2 panel
+  var mch2View = "chart";
+  var mch2ViewToggle = document.getElementById("mch2ViewToggle");
+  mch2ViewToggle.addEventListener("click", function (e) {
+    var btn = e.target.closest(".view-toggle-btn");
+    if (!btn) return;
+    mch2View = btn.getAttribute("data-view");
+    mch2ViewToggle.querySelectorAll(".view-toggle-btn").forEach(function (b) {
+      b.classList.toggle("active", b === btn);
+    });
+    applyMch2View();
+  });
+
+  function applyMch2View() {
+    document.getElementById("mch2List").hidden = mch2View !== "chart";
+    document.getElementById("mch2TableWrap").hidden = mch2View !== "detail";
+  }
+
+  // ---------------------------------------------------------------------
+  // Daily trend chart
+  // ---------------------------------------------------------------------
+
+  function renderTrend(selectedMonth) {
+    var daily = DATA.dailyByMonth[selectedMonth];
+    var svg = document.getElementById("trendSvg");
+    var tooltip = document.getElementById("trendTooltip");
+    svg.innerHTML = "";
+
+    var w = 640, h = 190;
+    var padL = 48, padR = 12, padT = 36, padB = 26;
+    var plotW = w - padL - padR;
+    var plotH = h - padT - padB;
+
+    var values = daily.map(function (d) { return d.total; });
+    var maxVal = Math.max.apply(null, values) * 1.1 || 1;
+
+    // Y-axis gridlines + labels
+    var ticks = 4;
+    for (var t = 0; t <= ticks; t++) {
+      var yVal = (maxVal / ticks) * t;
+      var y = padT + plotH - (yVal / maxVal) * plotH;
+
+      var gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      gridLine.setAttribute("x1", padL);
+      gridLine.setAttribute("x2", w - padR);
+      gridLine.setAttribute("y1", y);
+      gridLine.setAttribute("y2", y);
+      gridLine.style.stroke = "var(--gridline)";
+      gridLine.setAttribute("stroke-width", "1");
+      svg.appendChild(gridLine);
+
+      var label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", padL - 8);
+      label.setAttribute("y", y + 4);
+      label.setAttribute("text-anchor", "end");
+      label.setAttribute("font-size", "10");
+      label.style.fill = "var(--text-muted)";
+      label.textContent = formatAbbrev(yVal);
+      svg.appendChild(label);
+    }
+
+    var coords = daily.map(function (d, i) {
+      var x = padL + (i / (daily.length - 1 || 1)) * plotW;
+      var y = padT + plotH - (d.total / maxVal) * plotH;
+      return [x, y];
+    });
+
+    var linePath = smoothPath(coords);
+    var areaPath = linePath +
+      " L" + coords[coords.length - 1][0] + "," + (padT + plotH) +
+      " L" + coords[0][0] + "," + (padT + plotH) + " Z";
+
+    var area = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    area.setAttribute("d", areaPath);
+    area.style.fill = "var(--accent-blue-tint)";
+    area.setAttribute("opacity", "0.5");
+    svg.appendChild(area);
+
+    var line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    line.setAttribute("d", linePath);
+    line.style.fill = "none";
+    line.style.stroke = "var(--accent-blue)";
+    line.setAttribute("stroke-width", "2");
+    svg.appendChild(line);
+
+    // Labelled points thinned out to roughly one every few days, to avoid
+    // the whole row of 28-31 day-over-day labels turning into clutter.
+    // The last day is always labelled too, but only as its own point --
+    // if it would land within half a step of the previous labelled point
+    // it replaces that point instead of adding a second, crowded label.
+    var labelEvery = Math.ceil(daily.length / 6);
+    var labelIndices = [];
+    for (var li = 0; li < daily.length; li += labelEvery) labelIndices.push(li);
+    var lastIdx = daily.length - 1;
+    if (labelIndices[labelIndices.length - 1] !== lastIdx) {
+      var prevLabelIdx = labelIndices[labelIndices.length - 1];
+      if (lastIdx - prevLabelIdx < labelEvery / 2) {
+        labelIndices[labelIndices.length - 1] = lastIdx;
+      } else {
+        labelIndices.push(lastIdx);
+      }
+    }
+    var labelIndexSet = {};
+    labelIndices.forEach(function (idx) { labelIndexSet[idx] = true; });
+
+    function addText(x, y, text, size, color, weight, anchor) {
+      var t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", x);
+      t.setAttribute("y", y);
+      t.setAttribute("text-anchor", anchor || "middle");
+      t.setAttribute("font-size", String(size));
+      if (weight) t.setAttribute("font-weight", weight);
+      t.style.fill = color;
+      t.textContent = text;
+      svg.appendChild(t);
+    }
+
+    // Edge points get anchored inward (start/end) instead of centered, so
+    // their label text doesn't run past the left/right edge of the chart.
+    function edgeAnchor(i, total) {
+      if (i === 0) return "start";
+      if (i === total - 1) return "end";
+      return "middle";
+    }
+
+    daily.forEach(function (d, i) {
+      if (!labelIndexSet[i]) return;
+
+      var x = coords[i][0];
+      var pointY = coords[i][1];
+      var valueY = Math.max(12, pointY - 26);
+      var diffY = valueY + 12;
+      var anchor = edgeAnchor(i, daily.length);
+
+      addText(x, valueY, formatMillions(d.total), 11, "var(--text-primary)", "700", anchor);
+
+      if (i > 0 && daily[i - 1].total) {
+        var diff = ((d.total - daily[i - 1].total) / daily[i - 1].total) * 100;
+        var isUp = diff >= 0;
+        addText(
+          x, diffY,
+          (isUp ? "▲ +" : "▼ ") + diff.toFixed(2) + "%",
+          10, isUp ? "var(--good)" : "var(--bad)", "600", anchor
+        );
+      }
+    });
+
+    // X-axis day labels, thinned out to avoid clutter
+    daily.forEach(function (d, i) {
+      if (!labelIndexSet[i]) return;
+      var day = d.payment_date.split("-")[2];
+      addText(coords[i][0], h - 8, day, 10, "var(--text-muted)", null, edgeAnchor(i, daily.length));
+    });
+
+    // Hover dots + tooltip
+    coords.forEach(function (c, i) {
+      var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", c[0]);
+      dot.setAttribute("cy", c[1]);
+      dot.setAttribute("r", "8");
+      dot.setAttribute("fill", "transparent");
+      dot.style.cursor = "pointer";
+      dot.addEventListener("mouseenter", function () {
+        var visDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        visDot.setAttribute("cx", c[0]);
+        visDot.setAttribute("cy", c[1]);
+        visDot.setAttribute("r", "3.5");
+        visDot.style.fill = "var(--accent-blue)";
+        visDot.setAttribute("class", "hover-dot");
+        svg.appendChild(visDot);
+
+        var rect = svg.getBoundingClientRect();
+        tooltip.style.left = (c[0] / w) * rect.width + "px";
+        tooltip.style.top = (c[1] / h) * rect.height + "px";
+        tooltip.textContent = daily[i].payment_date + ": " + formatFull(daily[i].total) + " บาท";
+        tooltip.style.opacity = "1";
+      });
+      dot.addEventListener("mouseleave", function () {
+        svg.querySelectorAll(".hover-dot").forEach(function (n) { n.remove(); });
+        tooltip.style.opacity = "0";
+      });
+      svg.appendChild(dot);
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Monthly payment, year-to-date
+  // ---------------------------------------------------------------------
+
+  function renderYtdChart(selectedMonth) {
+    var ytdMonths = getYtdMonths(selectedMonth);
+    var selectedEntry = ytdMonths[ytdMonths.length - 1];
+
+    document.getElementById("ytdSubtitle").textContent =
+      "สะสมตั้งแต่ต้นปี " + (selectedEntry.year + 543) + " ถึง " + monthLabel(selectedMonth) + ", THB";
+
+    var svg = document.getElementById("ytdChartSvg");
+    svg.innerHTML = "";
+
+    var w = 640, h = 190;
+    var padL = 48, padR = 12, padT = 48, padB = 26;
+    var plotW = w - padL - padR;
+    var plotH = h - padT - padB;
+
+    var maxVal = Math.max.apply(null, ytdMonths.map(function (m) { return m.total; })) * 1.15 || 1;
+
+    var ticks = 4;
+    for (var t = 0; t <= ticks; t++) {
+      var yVal = (maxVal / ticks) * t;
+      var y = padT + plotH - (yVal / maxVal) * plotH;
+
+      var gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      gridLine.setAttribute("x1", padL);
+      gridLine.setAttribute("x2", w - padR);
+      gridLine.setAttribute("y1", y);
+      gridLine.setAttribute("y2", y);
+      gridLine.style.stroke = "var(--gridline)";
+      gridLine.setAttribute("stroke-width", "1");
+      svg.appendChild(gridLine);
+
+      var gridLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      gridLabel.setAttribute("x", padL - 8);
+      gridLabel.setAttribute("y", y + 4);
+      gridLabel.setAttribute("text-anchor", "end");
+      gridLabel.setAttribute("font-size", "10");
+      gridLabel.style.fill = "var(--text-muted)";
+      gridLabel.textContent = formatAbbrev(yVal);
+      svg.appendChild(gridLabel);
+    }
+
+    var n = ytdMonths.length;
+    var slotW = plotW / n;
+    var barW = Math.min(44, slotW * 0.55);
+
+    ytdMonths.forEach(function (m, i) {
+      var slotCenterX = padL + slotW * (i + 0.5);
+      var barH = (m.total / maxVal) * plotH;
+      var barY = padT + plotH - barH;
+      var isSelected = m.month === selectedMonth;
+
+      var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", slotCenterX - barW / 2);
+      rect.setAttribute("y", barY);
+      rect.setAttribute("width", barW);
+      rect.setAttribute("height", Math.max(barH, 1));
+      rect.setAttribute("rx", "4");
+      rect.style.fill = isSelected ? "var(--accent-blue)" : "var(--accent-blue-tint)";
+      svg.appendChild(rect);
+
+      var valueY = Math.max(38, barY - 7);
+      var growthY = Math.max(15, valueY - 14);
+
+      var valueLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      valueLabel.setAttribute("x", slotCenterX);
+      valueLabel.setAttribute("y", valueY);
+      valueLabel.setAttribute("text-anchor", "middle");
+      valueLabel.setAttribute("font-size", "12");
+      if (isSelected) valueLabel.setAttribute("font-weight", "700");
+      valueLabel.style.fill = isSelected ? "var(--text-primary)" : "var(--text-secondary)";
+      valueLabel.textContent = formatMillions(m.total);
+      svg.appendChild(valueLabel);
+
+      // %growth vs the immediately preceding calendar month (looked up in
+      // the full month list, so January correctly compares against the
+      // prior year's December rather than having no comparison at all).
+      var dataIdx = DATA.months.indexOf(m);
+      var prevMonthEntry = dataIdx > 0 ? DATA.months[dataIdx - 1] : null;
+      if (prevMonthEntry && prevMonthEntry.total) {
+        var monthGrowth = ((m.total - prevMonthEntry.total) / prevMonthEntry.total) * 100;
+        var monthIsUp = monthGrowth >= 0;
+        var growthLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        growthLabel.setAttribute("x", slotCenterX);
+        growthLabel.setAttribute("y", growthY);
+        growthLabel.setAttribute("text-anchor", "middle");
+        growthLabel.setAttribute("font-size", "10.5");
+        if (isSelected) growthLabel.setAttribute("font-weight", "700");
+        growthLabel.style.fill = monthIsUp ? "var(--good)" : "var(--bad)";
+        growthLabel.textContent = (monthIsUp ? "▲ +" : "▼ ") + monthGrowth.toFixed(1) + "%";
+        svg.appendChild(growthLabel);
+      }
+
+      var monthTick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      monthTick.setAttribute("x", slotCenterX);
+      monthTick.setAttribute("y", h - 8);
+      monthTick.setAttribute("text-anchor", "middle");
+      monthTick.setAttribute("font-size", "11.5");
+      if (isSelected) monthTick.setAttribute("font-weight", "700");
+      monthTick.style.fill = isSelected ? "var(--accent-blue)" : "var(--text-muted)";
+      monthTick.textContent = monthShortLabel(m.month);
+      svg.appendChild(monthTick);
+    });
+  }
+
+  // ---------------------------------------------------------------------
+
+  function render(selectedMonth) {
+    renderKpi(selectedMonth);
+    renderBranchList(selectedMonth);
+    renderBranchTable(selectedMonth);
+    applyBranchView();
+    renderChannelPie(selectedMonth);
+    renderChannelTable(selectedMonth);
+    applyChannelView();
+    renderMch2List(selectedMonth);
+    renderMch2Table(selectedMonth);
+    applyMch2View();
+    renderTrend(selectedMonth);
+    renderYtdChart(selectedMonth);
+  }
+
+  // ---------------------------------------------------------------------
+  // Raw payment detail — 10 real rows queried from
+  // ds_vdo_payment_article_fact, every column, shown as-is (not filtered
+  // by the month selector; it's a schema/data preview, not an aggregate).
+  // ---------------------------------------------------------------------
+
+  var RAW_SAMPLE_ROWS = [
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาบางนา", sls_grp_desc: "Showroom", brand: "N/A", mch3: "ค่าบริการและอื่นๆ", mch2: "EXPRESS SERVICE", mch1: "ค่าบริการติดตั้งกลุ่มวัสดุปิดผิว", mc: "ติดตั้งวัสดุปิดผิว", article_id: "90000871", article_name_th: "ค่าสำรวจพื้น Surface Covering ครั้งที่ 1", item_flag: "N/A", payment_inc_tax: 1500, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขารัชดา", sls_grp_desc: "Showroom", brand: "KOHLER", mch3: "ห้องน้ำ", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1357730", article_name_th: "K-74035X-4A-CP ก๊อกผสมยืนอาบติดผนัง", item_flag: "FAST", payment_inc_tax: 331.18, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาพุทธมณฑล", sls_grp_desc: "Anyhome", brand: "N/A", mch3: "ค่าบริการและอื่นๆ", mch2: "EXPRESS SERVICE", mch1: "ค่าบริการติดตั้งกลุ่มห้องน้ำ", mc: "ค่าติดตั้งสุขภัณฑ์", article_id: "90000642", article_name_th: "ติดตั้งชักโครกอัตโนมัติ", item_flag: "N/A", payment_inc_tax: 2000, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขารัชดา", sls_grp_desc: "Showroom", brand: "BATH&BATH", mch3: "ห้องน้ำ", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1357753", article_name_th: "ชุดSETฉากกั้นอาบน้ำBK-20160-10-B-A GREAT", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาอุดรธานี", sls_grp_desc: "Anyhome", brand: "ROCKA", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1359179", article_name_th: "D43-ท็อปไอแลนด์ COTTO NANO ขาว 79X229 Cm", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาบางนา", sls_grp_desc: "Showroom", brand: "COTTO", mch3: "ห้องน้ำ", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1357749", article_name_th: "C001117", item_flag: "FAST", payment_inc_tax: 23021.61, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สำนักงานกลาง", sls_grp_desc: "Website", brand: "N/A", mch3: "ค่าบริการและอื่นๆ", mch2: "EXPRESS SERVICE", mch1: "ค่าบริการติดตั้งอุปกรณ์ไฟฟ้าและแสงสว่าง", mc: "ติดตั้งโคมไฟ", article_id: "90000820", article_name_th: "ค่าติดตั้งโคมไฟราคา 10,001-30,000 บาท", item_flag: "N/A", payment_inc_tax: 1500, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขารัชดา", sls_grp_desc: "Showroom", brand: "KOHLER", mch3: "ห้องน้ำ", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1357456", article_name_th: "K-EX27030T-4-CP ชุดเรนชาวเวอร์ OCCASION", item_flag: "FAST", payment_inc_tax: 41389.31, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาเชียงใหม่", sls_grp_desc: "Showroom", brand: "CFI TOP", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1292382", article_name_th: "WORKTOP SILESTONE สีธรรมชาติ", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
+    { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาอุดรธานี", sls_grp_desc: "Anyhome", brand: "ROCKA", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1359068", article_name_th: "E23K-65 ชุดแผ่นปิดข้างตู้ 58-86 สีขาว", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
+  ];
+
+  var RAW_COLUMNS = [
+    "vendor_id", "vendor_name", "payment_date", "branch", "sls_grp_desc", "brand",
+    "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
+    "payment_inc_tax", "start_date", "end_date",
+  ];
+  var RAW_COLUMN_LABELS = [
+    "VENDOR_ID", "VENDOR_NAME", "PAYMENT_DATE", "BRANCH", "SLS_GRP_DESC", "BRAND",
+    "MCH3", "MCH2", "MCH1", "MC", "ARTICLE_ID", "ARTICLE_NAME_TH", "ITEM_FLAG",
+    "PAYMENT_INC_TAX", "START_DATE", "END_DATE",
+  ];
+
+  function renderRawDataTable() {
+    var tbody = document.getElementById("rawDataTableBody");
+    tbody.innerHTML = "";
+    RAW_SAMPLE_ROWS.forEach(function (r) {
+      var tr = document.createElement("tr");
+      RAW_COLUMNS.forEach(function (col) {
+        var td = document.createElement("td");
+        if (col === "payment_inc_tax") {
+          td.className = "col-num";
+          td.textContent = formatFull(r[col]);
+        } else {
+          td.textContent = r[col];
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+
+  renderRawDataTable();
+
+  // ---------------------------------------------------------------------
+  // Download all detail (one .xlsx workbook, one sheet per section)
+  // ---------------------------------------------------------------------
+
+  function summarySheetRows(rows, nameKey, prevRows, headerName) {
+    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
+    var out = [[headerName, "Payment (THB)", "% Share", "% Growth"]];
+    rows.forEach(function (r) {
+      var share = total ? (r.total / total) * 100 : 0;
+      var prevRow = prevRows && prevRows.filter(function (p) { return p[nameKey] === r[nameKey]; })[0];
+      var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
+      out.push([
+        r[nameKey],
+        r.total,
+        Number(share.toFixed(2)),
+        growth === null ? "-" : Number(growth.toFixed(2)),
+      ]);
+    });
+    return out;
+  }
+
+  function downloadAllDetail() {
+    var selectedMonth = monthSelect.value;
+    var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
+    var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
+
+    var branchRows = summarySheetRows(
+      DATA.branchByMonth[selectedMonth], "branch",
+      prevMonthKey ? DATA.branchByMonth[prevMonthKey] : null, "Branch"
+    );
+    var channelRows = summarySheetRows(
+      DATA.channelByMonth[selectedMonth], "channel",
+      prevMonthKey ? DATA.channelByMonth[prevMonthKey] : null, "Channel"
+    );
+    var mch2Rows = summarySheetRows(
+      DATA.mch2ByMonth[selectedMonth], "mch2",
+      prevMonthKey ? DATA.mch2ByMonth[prevMonthKey] : null, "MCH2"
+    );
+
+    var dailyRows = [["Payment Date", "Payment (THB)"]];
+    DATA.dailyByMonth[selectedMonth].forEach(function (d) {
+      dailyRows.push([d.payment_date, d.total]);
+    });
+
+    var rawRows = [RAW_COLUMN_LABELS];
+    RAW_SAMPLE_ROWS.forEach(function (r) {
+      rawRows.push(RAW_COLUMNS.map(function (col) { return r[col]; }));
+    });
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dailyRows), "Payment Daily");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(branchRows), "Branch");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(channelRows), "Channel");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mch2Rows), "MCH2");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawRows), "Raw Detail");
+
+    var parts = selectedMonth.split("-");
+    var fileName = "Payment Detail " + parts[1] + "-" + parts[0] + ".xlsx";
+    XLSX.writeFile(wb, fileName);
+  }
+
+  document.getElementById("downloadAllBtn").addEventListener("click", downloadAllDetail);
+
+  render(monthSelect.value);
+})();
+  </script>
+</body>
+</html>

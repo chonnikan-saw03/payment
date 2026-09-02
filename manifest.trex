@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
+  <dashboard-extension id="com.boonthavorn.paymentdashboard" extension-version="1.0.0">
+    <default-locale>en_US</default-locale>
+    <name>Payment Dashboard</name>
+    <description>
+      สรุปมูลค่า payment รวม %growth เทียบเดือนก่อน trend รายวัน และ payment รายสาขา
+      จาก boonthavorn-data-analytic.tableau.ds_vdo_payment_article_fact
+    </description>
+    <author name="Chonnikan Saw" email="chonnikan.saw@boonthavorn.com" organization="Boonthavorn" website="https://www.boonthavorn.com"/>
+    <min-api-version>1.0</min-api-version>
+    <source-location>
+      <!--
+        Payment.html ตอนนี้เป็นแค่ preview ที่ใช้ sample data (ยังไม่ต่อ BigQuery จริง)
+
+        Host ผ่าน GitHub Pages: https://github.com/chonnikan-saw03/payment-dashboard
+        แก้ไฟล์แล้ว commit + push ไปที่ branch main จะอัปเดต URL นี้อัตโนมัติ
+        (GitHub Pages ใช้เวลาสักครู่ถึงจะ deploy เวอร์ชันใหม่)
+      -->
+      <url>https://chonnikan-saw03.github.io/payment-dashboard/Payment.html</url>
+    </source-location>
+    <icon>iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=</icon>
+  </dashboard-extension>
+</manifest>
