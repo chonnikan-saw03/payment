@@ -13,11 +13,11 @@
       <!--
         Payment.html ตอนนี้เป็นแค่ preview ที่ใช้ sample data (ยังไม่ต่อ BigQuery จริง)
 
-        Host ผ่าน GitHub Pages: https://github.com/chonnikan-saw03/payment-dashboard
+        Host ผ่าน GitHub Pages: https://github.com/chonnikan-saw03/payment
         แก้ไฟล์แล้ว commit + push ไปที่ branch main จะอัปเดต URL นี้อัตโนมัติ
         (GitHub Pages ใช้เวลาสักครู่ถึงจะ deploy เวอร์ชันใหม่)
       -->
-      <url>https://chonnikan-saw03.github.io/payment-dashboard/Payment.html</url>
+      <url>https://chonnikan-saw03.github.io/payment/Payment.html</url>
     </source-location>
     <icon>iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=</icon>
   </dashboard-extension>

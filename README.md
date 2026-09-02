@@ -13,7 +13,7 @@ Tableau Dashboard Extension ที่แสดงสรุปมูลค่า 
 
 ## Deploy
 
-**Production:** host ผ่าน GitHub Pages ที่ `https://chonnikan-saw03.github.io/payment-dashboard/Payment.html`
+**Production:** host ผ่าน GitHub Pages ที่ `https://chonnikan-saw03.github.io/payment/Payment.html`
 
 **Local dev:** รัน static server จากโฟลเดอร์นี้ เช่น
 
