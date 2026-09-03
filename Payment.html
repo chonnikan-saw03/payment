@@ -492,9 +492,9 @@ html, body {
       </div>
     </div>
     <div class="header-controls">
-      <span>สาขา</span>
+      <span>Branch</span>
       <select id="branchFilter"></select>
-      <span>เดือน</span>
+      <span>Month</span>
       <select id="monthSelect"></select>
       <button type="button" class="header-download-btn" id="downloadAllBtn" title="ดาวน์โหลดรายละเอียดทั้งหมด (Excel)">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -899,7 +899,7 @@ html, body {
     branchFilter.innerHTML = "";
     var allOpt = document.createElement("option");
     allOpt.value = ALL_BRANCHES_VALUE;
-    allOpt.textContent = "ทั้งหมด";
+    allOpt.textContent = "All";
     branchFilter.appendChild(allOpt);
     branchNames.forEach(function (name) {
       var opt = document.createElement("option");
@@ -2093,7 +2093,32 @@ html, body {
       throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มี underlying table');
     }
 
-    var dataTable = await worksheet.getUnderlyingTableDataAsync(tables[0].id, {
+    // A worksheet can be backed by more than one logical table (a join/
+    // blend); blindly using tables[0] can silently read the wrong one.
+    // Peek at each table's columns (1 row is enough) and use the first one
+    // that actually has every field we need.
+    var neededFields = Object.keys(FIELD_MAP).map(function (key) { return FIELD_MAP[key]; });
+    var chosenTableId = null;
+    var tableReport = [];
+    for (var i = 0; i < tables.length; i++) {
+      var peek = await worksheet.getUnderlyingTableDataAsync(tables[i].id, {
+        maxRows: 1,
+        ignoreSelection: true,
+        includeAllColumns: true,
+      });
+      var peekFieldNames = peek.columns.map(function (col) { return col.fieldName; });
+      var hasAll = neededFields.every(function (f) { return peekFieldNames.indexOf(f) !== -1; });
+      tableReport.push((tables[i].caption || tables[i].id) + ": [" + peekFieldNames.join(", ") + "]");
+      if (hasAll && chosenTableId === null) chosenTableId = tables[i].id;
+    }
+    if (chosenTableId === null) {
+      throw new Error(
+        "ไม่มี underlying table ไหนมีครบทุก field ที่ต้องการ (" + neededFields.join(", ") + ") — table ที่มี: " +
+        tableReport.join(" | ")
+      );
+    }
+
+    var dataTable = await worksheet.getUnderlyingTableDataAsync(chosenTableId, {
       maxRows: 0,
       ignoreSelection: true,
       includeAllColumns: true,
