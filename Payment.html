@@ -796,7 +796,10 @@ html, body {
     };
   }
 
-  var DATA = buildSampleData();
+  // Populated by init() below -- from the real "Payment" worksheet when
+  // running inside Tableau, or from buildSampleData() as a preview fallback
+  // when opened directly in a browser (no Tableau host to talk to).
+  var DATA;
 
   // ---------------------------------------------------------------------
   // Formatting helpers
@@ -857,13 +860,18 @@ html, body {
   // ---------------------------------------------------------------------
 
   var monthSelect = document.getElementById("monthSelect");
-  DATA.months.forEach(function (m) {
-    var opt = document.createElement("option");
-    opt.value = m.month;
-    opt.textContent = monthLabel(m.month);
-    monthSelect.appendChild(opt);
-  });
-  monthSelect.value = DATA.months[DATA.months.length - 1].month;
+
+  function populateMonthOptions() {
+    monthSelect.innerHTML = "";
+    DATA.months.forEach(function (m) {
+      var opt = document.createElement("option");
+      opt.value = m.month;
+      opt.textContent = monthLabel(m.month);
+      monthSelect.appendChild(opt);
+    });
+    monthSelect.value = DATA.months[DATA.months.length - 1].month;
+  }
+
   monthSelect.addEventListener("change", function () { render(monthSelect.value); });
 
   // Every month in DATA.months that falls in the same year as selectedMonth,
@@ -1752,7 +1760,9 @@ html, body {
   // by the month selector; it's a schema/data preview, not an aggregate).
   // ---------------------------------------------------------------------
 
-  var RAW_SAMPLE_ROWS = [
+  // Fallback preview rows, used only when there's no real Tableau host to
+  // pull the "Payment" worksheet from (see init() at the bottom).
+  var SAMPLE_RAW_ROWS = [
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาบางนา", sls_grp_desc: "Showroom", brand: "N/A", mch3: "ค่าบริการและอื่นๆ", mch2: "EXPRESS SERVICE", mch1: "ค่าบริการติดตั้งกลุ่มวัสดุปิดผิว", mc: "ติดตั้งวัสดุปิดผิว", article_id: "90000871", article_name_th: "ค่าสำรวจพื้น Surface Covering ครั้งที่ 1", item_flag: "N/A", payment_inc_tax: 1500, start_date: "2026-08-31", end_date: "2026-08-31" },
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขารัชดา", sls_grp_desc: "Showroom", brand: "KOHLER", mch3: "ห้องน้ำ", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1357730", article_name_th: "K-74035X-4A-CP ก๊อกผสมยืนอาบติดผนัง", item_flag: "FAST", payment_inc_tax: 331.18, start_date: "2026-08-31", end_date: "2026-08-31" },
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาพุทธมณฑล", sls_grp_desc: "Anyhome", brand: "N/A", mch3: "ค่าบริการและอื่นๆ", mch2: "EXPRESS SERVICE", mch1: "ค่าบริการติดตั้งกลุ่มห้องน้ำ", mc: "ค่าติดตั้งสุขภัณฑ์", article_id: "90000642", article_name_th: "ติดตั้งชักโครกอัตโนมัติ", item_flag: "N/A", payment_inc_tax: 2000, start_date: "2026-08-31", end_date: "2026-08-31" },
@@ -1764,6 +1774,10 @@ html, body {
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาเชียงใหม่", sls_grp_desc: "Showroom", brand: "CFI TOP", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1292382", article_name_th: "WORKTOP SILESTONE สีธรรมชาติ", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาอุดรธานี", sls_grp_desc: "Anyhome", brand: "ROCKA", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1359068", article_name_th: "E23K-65 ชุดแผ่นปิดข้างตู้ 58-86 สีขาว", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
   ];
+
+  // Populated by init() -- SAMPLE_RAW_ROWS as a preview fallback, or the
+  // first 10 real rows pulled from the "Payment" worksheet in Tableau.
+  var RAW_SAMPLE_ROWS;
 
   var RAW_COLUMNS = [
     "vendor_id", "vendor_name", "payment_date", "branch", "sls_grp_desc", "brand",
@@ -1794,8 +1808,6 @@ html, body {
       tbody.appendChild(tr);
     });
   }
-
-  renderRawDataTable();
 
   // ---------------------------------------------------------------------
   // Download all detail (one .xlsx workbook, one sheet per section)
@@ -1860,7 +1872,201 @@ html, body {
 
   document.getElementById("downloadAllBtn").addEventListener("click", downloadAllDetail);
 
-  render(monthSelect.value);
+  // ---------------------------------------------------------------------
+  // Real data: pull every row from the "Payment" worksheet (which carries
+  // the ds_vdo_payment_article_fact fields at transaction-row grain) and
+  // aggregate it client-side into the same {months, dailyByMonth,
+  // branchByMonth, channelByMonth, mch2ByMonth} shape buildSampleData()
+  // produces, so every render* function below works unchanged either way.
+  // ---------------------------------------------------------------------
+
+  var WORKSHEET_NAME = "Payment";
+
+  var FIELD_MAP = {
+    vendor_id: "Vendor Id",
+    vendor_name: "Vendor Name",
+    payment_date: "Payment Date",
+    branch: "Branch",
+    sls_grp_desc: "Sls Grp Desc",
+    brand: "Brand",
+    mch3: "Mch3",
+    mch2: "Mch2",
+    mch1: "Mch1",
+    mc: "Mc",
+    article_id: "Article Id",
+    article_name_th: "Article Name Th",
+    item_flag: "Item Flag",
+    payment_inc_tax: "Payment Inc Tax",
+    start_date: "Start Date",
+    end_date: "End Date",
+  };
+
+  function withTimeout(promise, ms, timeoutMessage) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, reject) {
+        setTimeout(function () { reject(new Error(timeoutMessage)); }, ms);
+      }),
+    ]);
+  }
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  // Groups rows by monthKey ("YYYY-MM") and, within each month, sums payment
+  // by an arbitrary key (branch / sls_grp_desc / mch2), sorted desc by total.
+  function groupSorted(rowsInMonth, keyName) {
+    var totals = {};
+    rowsInMonth.forEach(function (r) {
+      var k = r[keyName] || "(ไม่ระบุ)";
+      totals[k] = (totals[k] || 0) + r.payment_inc_tax;
+    });
+    var arr = Object.keys(totals).map(function (k) {
+      var o = {}; o[keyName === "sls_grp_desc" ? "channel" : keyName] = k; o.total = totals[k];
+      return o;
+    });
+    arr.sort(function (a, b) { return b.total - a.total; });
+    return arr;
+  }
+
+  function buildDataFromRows(rows) {
+    var byMonth = {};
+    rows.forEach(function (r) {
+      var d = new Date(r.payment_date);
+      var monthKey = d.getFullYear() + "-" + pad2(d.getMonth() + 1);
+      (byMonth[monthKey] = byMonth[monthKey] || []).push(r);
+    });
+
+    var monthKeys = Object.keys(byMonth).sort();
+    var months = monthKeys.map(function (monthKey) {
+      var rowsInMonth = byMonth[monthKey];
+      var total = rowsInMonth.reduce(function (a, r) { return a + r.payment_inc_tax; }, 0);
+      var parts = monthKey.split("-");
+      return { month: monthKey, total: total, year: Number(parts[0]), monthNum: Number(parts[1]) };
+    });
+
+    var dailyByMonth = {}, branchByMonth = {}, channelByMonth = {}, mch2ByMonth = {};
+    monthKeys.forEach(function (monthKey) {
+      var rowsInMonth = byMonth[monthKey];
+
+      var dayTotals = {};
+      rowsInMonth.forEach(function (r) {
+        var d = new Date(r.payment_date);
+        var dayKey = monthKey + "-" + pad2(d.getDate());
+        dayTotals[dayKey] = (dayTotals[dayKey] || 0) + r.payment_inc_tax;
+      });
+      dailyByMonth[monthKey] = Object.keys(dayTotals).sort().map(function (dayKey) {
+        return { payment_date: dayKey, total: dayTotals[dayKey] };
+      });
+
+      branchByMonth[monthKey] = groupSorted(rowsInMonth, "branch");
+      channelByMonth[monthKey] = groupSorted(rowsInMonth, "sls_grp_desc");
+
+      // MCH2: top 10 + "อื่นๆ" bucket for the long tail, "อื่นๆ" always last.
+      var mch2Sorted = groupSorted(rowsInMonth, "mch2");
+      if (mch2Sorted.length > 11) {
+        var top10 = mch2Sorted.slice(0, 10);
+        var otherTotal = mch2Sorted.slice(10).reduce(function (a, r) { return a + r.total; }, 0);
+        top10.push({ mch2: "อื่นๆ", total: otherTotal });
+        mch2ByMonth[monthKey] = top10;
+      } else {
+        mch2ByMonth[monthKey] = mch2Sorted;
+      }
+    });
+
+    return { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
+  }
+
+  async function loadRealRowsFromWorksheet() {
+    var dashboard = tableau.extensions.dashboardContent.dashboard;
+    var worksheet = dashboard.worksheets.find(function (w) { return w.name === WORKSHEET_NAME; });
+    if (!worksheet) {
+      throw new Error('ไม่พบ worksheet ชื่อ "' + WORKSHEET_NAME + '" ใน dashboard นี้');
+    }
+
+    var tables = await worksheet.getUnderlyingTablesAsync();
+    if (!tables.length) {
+      throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มี underlying table');
+    }
+
+    var dataTable = await worksheet.getUnderlyingTableDataAsync(tables[0].id, {
+      maxRows: 0,
+      ignoreSelection: true,
+      includeAllColumns: true,
+    });
+
+    var colIndex = {};
+    dataTable.columns.forEach(function (col) { colIndex[col.fieldName] = col.index; });
+
+    var missing = Object.keys(FIELD_MAP).filter(function (key) {
+      return !(FIELD_MAP[key] in colIndex);
+    });
+    if (missing.length) {
+      throw new Error(
+        "worksheet ขาด field: " + missing.map(function (k) { return FIELD_MAP[k]; }).join(", ")
+      );
+    }
+
+    return dataTable.data.map(function (dataRow) {
+      var row = {};
+      Object.keys(FIELD_MAP).forEach(function (key) {
+        row[key] = dataRow[colIndex[FIELD_MAP[key]]].value;
+      });
+      row.payment_inc_tax = Number(row.payment_inc_tax) || 0;
+      return row;
+    });
+  }
+
+  function showStatus(message, isError) {
+    var el = document.getElementById("status");
+    el.textContent = message;
+    el.className = "status" + (isError ? " error" : "");
+  }
+
+  function hideStatus() {
+    document.getElementById("status").className = "status hidden";
+  }
+
+  async function init() {
+    // Probe for a real Tableau host first. Opened directly as a preview
+    // (GitHub Pages, the Claude artifact, a local file) there is no host to
+    // answer this handshake, so it times out -- that's the normal preview
+    // case, not an error, and gets no status banner at all.
+    var insideTableau = false;
+    if (typeof tableau !== "undefined" && tableau.extensions) {
+      try {
+        await withTimeout(tableau.extensions.initializeAsync(), 1500, "no tableau host");
+        insideTableau = true;
+      } catch (err) {
+        insideTableau = false;
+      }
+    }
+
+    if (insideTableau) {
+      showStatus("กำลังโหลดข้อมูลจาก Tableau...", false);
+      try {
+        var rawRows = await loadRealRowsFromWorksheet();
+        if (!rawRows.length) throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มีข้อมูล');
+        DATA = buildDataFromRows(rawRows);
+        RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
+        hideStatus();
+        document.getElementById("subtitleText").textContent = "ds_vdo_payment_article_fact";
+      } catch (err) {
+        console.error("Payment Dashboard: falling back to sample data —", err);
+        DATA = buildSampleData();
+        RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
+        showStatus("โหลดข้อมูลจริงจาก Tableau ไม่สำเร็จ (" + err.message + ") — แสดง sample data แทน", true);
+      }
+    } else {
+      DATA = buildSampleData();
+      RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
+    }
+
+    populateMonthOptions();
+    renderRawDataTable();
+    render(monthSelect.value);
+  }
+
+  init();
 })();
   </script>
 </body>
