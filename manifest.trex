@@ -17,8 +17,8 @@
         แก้ไฟล์แล้ว commit + push ไปที่ branch main จะอัปเดต URL นี้อัตโนมัติ
         (GitHub Pages ใช้เวลาสักครู่ถึงจะ deploy เวอร์ชันใหม่)
 
-        ?v=N ต่อท้าย URL เป็น cache-buster -- Tableau's webview เคย cache หน้า
-        เก่าค้างไว้แม้ remove/re-add extension แล้ว การเปลี่ยนเลข v จะบังคับ
+        ?v=N ต่อท้าย URL เป็น cache-buster (Tableau's webview เคย cache หน้า
+        เก่าค้างไว้แม้ remove/re-add extension แล้ว) การเปลี่ยนเลข v จะบังคับ
         ให้โหลดใหม่จริงๆ ถ้ายังเจอปัญหาแบบนี้อีก ให้เพิ่มเลข v ขึ้นอีก 1
       -->
       <url>https://chonnikan-saw03.github.io/payment/Payment.html?v=2</url>
