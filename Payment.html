@@ -828,14 +828,6 @@ html, body {
   function monthLabel(monthKey) {
     var parts = monthKey.split("-");
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
-    return d.toLocaleDateString("th-TH", { month: "short", year: "numeric" });
-  }
-
-  // English month label for the Month filter dropdown specifically (e.g.
-  // "Aug 2026") -- monthLabel() above stays Thai for the KPI/YTD sentences.
-  function monthLabelEn(monthKey) {
-    var parts = monthKey.split("-");
-    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   }
 
@@ -847,7 +839,7 @@ html, body {
   function monthShortLabel(monthKey) {
     var parts = monthKey.split("-");
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
-    return d.toLocaleDateString("th-TH", { month: "short" });
+    return d.toLocaleDateString("en-US", { month: "short" });
   }
 
   // Catmull-Rom-to-Bezier spline through every point, so the trend reads as
@@ -880,7 +872,7 @@ html, body {
     DATA.months.forEach(function (m) {
       var opt = document.createElement("option");
       opt.value = m.month;
-      opt.textContent = monthLabelEn(m.month);
+      opt.textContent = monthLabel(m.month);
       monthSelect.appendChild(opt);
     });
     monthSelect.value = DATA.months[DATA.months.length - 1].month;
