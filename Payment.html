@@ -2235,8 +2235,12 @@ html, body {
 
       vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, function (event) {
         event.getParameterAsync().then(function (param) {
-          applyVendorNameHeader(param.currentValue.value);
-          reloadAndRender();
+          // Reload first, THEN look up the name -- looking it up against
+          // ALL_ROWS before the reload finishes reads the *previous*
+          // vendor's rows, so the header shows a stale name/ID mismatch.
+          reloadAndRender().then(function () {
+            applyVendorNameHeader(param.currentValue.value);
+          });
         });
       });
     } catch (err) {
