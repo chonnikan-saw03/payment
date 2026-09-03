@@ -652,8 +652,6 @@ html, body {
               <th>Article Name Th</th>
               <th>Item Flag</th>
               <th class="col-num">Payment Inc Tax</th>
-              <th>Start Date</th>
-              <th>End Date</th>
             </tr>
           </thead>
           <tbody id="rawDataTableBody"></tbody>
@@ -1896,12 +1894,12 @@ html, body {
   var RAW_COLUMNS = [
     "payment_date", "branch", "sls_grp_desc", "brand",
     "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
-    "payment_inc_tax", "start_date", "end_date",
+    "payment_inc_tax",
   ];
   var RAW_COLUMN_LABELS = [
     "Payment Date", "Branch", "Sls Grp Desc", "Brand",
     "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
-    "Payment Inc Tax", "Start Date", "End Date",
+    "Payment Inc Tax",
   ];
 
   function renderRawDataTable() {
