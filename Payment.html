@@ -2134,6 +2134,43 @@ html, body {
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Header vendor name -- the dashboard has a Tableau Parameter that holds
+  // one vendor ID at a time; show that vendor's name in the header instead
+  // of the generic "Vendor Name" label, and keep it live if the parameter
+  // changes (e.g. from a parameter control elsewhere on the dashboard).
+  // ---------------------------------------------------------------------
+
+  var VENDOR_PARAM_NAME = "P_DEFAULT_VENDOR_ID";
+
+  function vendorNameForId(vendorId) {
+    if (!ALL_ROWS) return null;
+    var row = ALL_ROWS.find(function (r) { return String(r.vendor_id) === String(vendorId); });
+    return row ? row.vendor_name : null;
+  }
+
+  async function wireVendorNameFromParameter() {
+    try {
+      var params = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
+      var vendorParam = params.find(function (p) { return p.name === VENDOR_PARAM_NAME; });
+      if (!vendorParam) {
+        console.warn('Payment Dashboard: parameter "' + VENDOR_PARAM_NAME + '" not found; header stays generic');
+        return;
+      }
+
+      function applyVendorName() {
+        var vendorId = vendorParam.currentValue.value;
+        var vendorName = vendorNameForId(vendorId);
+        document.getElementById("subtitleText").textContent = vendorName || String(vendorId);
+      }
+
+      applyVendorName();
+      vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, applyVendorName);
+    } catch (err) {
+      console.error("Payment Dashboard: could not read " + VENDOR_PARAM_NAME + " —", err);
+    }
+  }
+
   function showStatus(message, isError) {
     var el = document.getElementById("status");
     el.textContent = message;
@@ -2170,6 +2207,7 @@ html, body {
         USING_REAL_DATA = true;
         hideStatus();
         document.getElementById("subtitleText").textContent = "Vendor Name";
+        wireVendorNameFromParameter();
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
