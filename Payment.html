@@ -2130,9 +2130,25 @@ html, body {
 
   var VENDOR_PARAM_NAME = "P_DEFAULT_VENDOR_ID";
 
+  // Compares vendor IDs after stripping everything but digits, since the
+  // parameter's value and the worksheet field's value don't always come
+  // through in the same shape (e.g. "10046" vs "10046.0", or with commas
+  // from a number-formatted parameter).
+  function normalizeVendorId(v) {
+    return String(v == null ? "" : v).replace(/[^0-9]/g, "");
+  }
+
   function vendorNameForId(vendorId) {
     if (!ALL_ROWS) return null;
-    var row = ALL_ROWS.find(function (r) { return String(r.vendor_id) === String(vendorId); });
+    var target = normalizeVendorId(vendorId);
+    var row = ALL_ROWS.find(function (r) { return normalizeVendorId(r.vendor_id) === target; });
+    if (!row) {
+      console.warn(
+        "Payment Dashboard: no row matched vendor id", vendorId,
+        "-- sample vendor_id values in ALL_ROWS:",
+        ALL_ROWS.slice(0, 5).map(function (r) { return r.vendor_id; })
+      );
+    }
     return row ? row.vendor_name : null;
   }
 
