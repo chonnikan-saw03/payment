@@ -1919,16 +1919,13 @@ html, body {
   // ---------------------------------------------------------------------
 
   function summarySheetRows(rows, nameKey, prevRows, headerName) {
-    var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
-    var out = [[headerName, "Payment (THB)", "% Share", "% Growth"]];
+    var out = [[headerName, "Payment Inc Tax", "% Growth"]];
     rows.forEach(function (r) {
-      var share = total ? (r.total / total) * 100 : 0;
       var prevRow = prevRows && prevRows.filter(function (p) { return p[nameKey] === r[nameKey]; })[0];
       var growth = prevRow && prevRow.total ? ((r.total - prevRow.total) / prevRow.total) * 100 : null;
       out.push([
         r[nameKey],
         r.total,
-        Number(share.toFixed(2)),
         growth === null ? "-" : Number(growth.toFixed(2)),
       ]);
     });
@@ -1953,7 +1950,7 @@ html, body {
       prevMonthKey ? DATA.mch2ByMonth[prevMonthKey] : null, "MCH2"
     );
 
-    var dailyRows = [["Payment Date", "Payment (THB)"]];
+    var dailyRows = [["Payment Date", "Payment Inc Tax"]];
     DATA.dailyByMonth[selectedMonth].forEach(function (d) {
       dailyRows.push([d.payment_date, d.total]);
     });
@@ -1968,7 +1965,7 @@ html, body {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(branchRows), "Branch");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(channelRows), "Channel");
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(mch2Rows), "MCH2");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawRows), "Raw Detail");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rawRows), "Payment Detail");
 
     var parts = selectedMonth.split("-");
     var fileName = "Payment Detail " + parts[1] + "-" + parts[0] + ".xlsx";
