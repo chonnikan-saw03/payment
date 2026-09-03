@@ -2136,6 +2136,35 @@ html, body {
     return row ? row.vendor_name : null;
   }
 
+  function applyVendorNameHeader(vendorId) {
+    var vendorName = vendorNameForId(vendorId);
+    document.getElementById("subtitleText").textContent = vendorName || String(vendorId);
+  }
+
+  // Re-pulls every row from the "Payment" worksheet and re-renders. The
+  // worksheet is filtered by P_DEFAULT_VENDOR_ID (a calculated field/filter
+  // on the sheet references the parameter), so this is what actually picks
+  // up the new vendor's data -- reading the parameter alone only gets you
+  // its new value, not the worksheet re-querying itself.
+  async function reloadAndRender() {
+    try {
+      var rawRows = await loadRealRowsFromWorksheet();
+      if (!rawRows.length) throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มีข้อมูล');
+      DATA = buildDataFromRows(rawRows);
+      RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
+      ALL_ROWS = rawRows;
+      BASE_DATA = DATA;
+      hideStatus();
+      populateMonthOptions();
+      populateBranchFilterOptions();
+      renderRawDataTable();
+      render(monthSelect.value);
+    } catch (err) {
+      console.error("Payment Dashboard: reload after parameter change failed —", err);
+      showStatus("โหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ") — ข้อมูลที่แสดงอยู่อาจไม่ตรงกับ vendor ปัจจุบัน", true);
+    }
+  }
+
   async function wireVendorNameFromParameter() {
     try {
       var params = await tableau.extensions.dashboardContent.dashboard.getParametersAsync();
@@ -2145,14 +2174,14 @@ html, body {
         return;
       }
 
-      function applyVendorName() {
-        var vendorId = vendorParam.currentValue.value;
-        var vendorName = vendorNameForId(vendorId);
-        document.getElementById("subtitleText").textContent = vendorName || String(vendorId);
-      }
+      applyVendorNameHeader(vendorParam.currentValue.value);
 
-      applyVendorName();
-      vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, applyVendorName);
+      vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, function (event) {
+        event.getParameterAsync().then(function (param) {
+          applyVendorNameHeader(param.currentValue.value);
+          reloadAndRender();
+        });
+      });
     } catch (err) {
       console.error("Payment Dashboard: could not read " + VENDOR_PARAM_NAME + " —", err);
     }
