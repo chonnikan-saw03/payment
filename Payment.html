@@ -2142,19 +2142,21 @@ html, body {
     if (!ALL_ROWS) return null;
     var target = normalizeVendorId(vendorId);
     var row = ALL_ROWS.find(function (r) { return normalizeVendorId(r.vendor_id) === target; });
-    if (!row) {
-      console.warn(
-        "Payment Dashboard: no row matched vendor id", vendorId,
-        "-- sample vendor_id values in ALL_ROWS:",
-        ALL_ROWS.slice(0, 5).map(function (r) { return r.vendor_id; })
-      );
-    }
     return row ? row.vendor_name : null;
   }
 
+  // TEMP DEBUG: when the lookup fails, show what we actually have on-screen
+  // (parameter value + a few real vendor_id samples) so it can be
+  // screenshotted -- no need to open dev tools. Remove once this is fixed.
   function applyVendorNameHeader(vendorId) {
     var vendorName = vendorNameForId(vendorId);
-    document.getElementById("subtitleText").textContent = vendorName || String(vendorId);
+    if (vendorName) {
+      document.getElementById("subtitleText").textContent = vendorName;
+      return;
+    }
+    var samples = (ALL_ROWS || []).slice(0, 5).map(function (r) { return r.vendor_id; }).join(", ");
+    document.getElementById("subtitleText").textContent =
+      "DEBUG: param=" + JSON.stringify(vendorId) + " | sample vendor_id ในข้อมูล: " + samples;
   }
 
   // Re-pulls every row from the "Payment" worksheet and re-renders. The
