@@ -127,10 +127,13 @@ html, body {
 }
 
 .status {
-  padding: 40px 0;
+  padding: 12px 0;
   text-align: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 12px;
+  max-height: 80px;
+  overflow-y: auto;
+  word-break: break-word;
 }
 .status.hidden { display: none; }
 .status.error { color: var(--bad); }
@@ -2159,13 +2162,18 @@ html, body {
     var vendorCount = Object.keys(distinctVendors).length;
     var activeFilters = await worksheet.getFiltersAsync();
     var filterReport = activeFilters.length
-      ? activeFilters.map(function (f) { return f.fieldName + "=" + JSON.stringify(f.appliedValues || f.minValue || f.maxValue || "?"); }).join(", ")
-      : "(no filters reported on this worksheet)";
+      ? activeFilters.map(function (f) {
+          var n = (f.appliedValues && f.appliedValues.length) || null;
+          return f.fieldName + (n === null ? "" : " (" + n + " values)");
+        }).join(", ")
+      : "(none)";
+    var capNote = dataTable.isTotalRowCountLimited
+      ? " CAPPED (true total ≈ " + dataTable.totalRowCount + "+)"
+      : " (not capped, totalRowCount=" + dataTable.totalRowCount + ")";
     LAST_LOAD_DIAGNOSTICS =
-      "Tables: " + tableReport.join(" | ") +
-      " || Loaded " + rows.length + " rows, " + vendorCount + " distinct vendor_id" +
-      " || Active filters: " + filterReport +
-      " || Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
+      "Loaded " + rows.length + " rows" + capNote + ", " + vendorCount + " distinct vendor_id" +
+      " | Filters: " + filterReport +
+      " | Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
       " to " + (maxDate ? maxDate.toISOString().slice(0, 10) : "?");
 
     return rows;
