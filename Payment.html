@@ -488,7 +488,7 @@ html, body {
       <div class="header-icon">฿</div>
       <div>
         <h1>PAYMENT DASHBOARD</h1>
-        <div class="subtitle" id="subtitleText">ds_vdo_payment_article_fact · ตัวอย่าง (sample data)</div>
+        <div class="subtitle" id="subtitleText">Vendor Name · ตัวอย่าง (sample data)</div>
       </div>
     </div>
     <div class="header-controls">
@@ -634,7 +634,7 @@ html, body {
       <div class="panel-header">
         <div>
           <div class="panel-title">PAYMENT DETAIL</div>
-          <div class="panel-subtitle">ตัวอย่าง 10 แถวแรกจาก ds_vdo_payment_article_fact (ทุกคอลัมน์)</div>
+          <div class="panel-subtitle">ตัวอย่าง 10 แถวแรกจาก Vendor Name (ทุกคอลัมน์)</div>
         </div>
       </div>
       <div class="table-wrap">
@@ -2168,7 +2168,7 @@ html, body {
         ALL_ROWS = rawRows;
         USING_REAL_DATA = true;
         hideStatus();
-        document.getElementById("subtitleText").textContent = "ds_vdo_payment_article_fact";
+        document.getElementById("subtitleText").textContent = "Vendor Name";
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
