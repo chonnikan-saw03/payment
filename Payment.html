@@ -806,6 +806,7 @@ html, body {
   var BASE_DATA;
   var ALL_ROWS = null;
   var USING_REAL_DATA = false;
+  var LAST_LOAD_DIAGNOSTICS = ""; // TEMP DEBUG
 
   // ---------------------------------------------------------------------
   // Formatting helpers
@@ -2108,7 +2109,9 @@ html, body {
       });
       var peekFieldNames = peek.columns.map(function (col) { return col.fieldName; });
       var hasAll = neededFields.every(function (f) { return peekFieldNames.indexOf(f) !== -1; });
-      tableReport.push((tables[i].caption || tables[i].id) + ": [" + peekFieldNames.join(", ") + "]");
+      tableReport.push(
+        (tables[i].caption || tables[i].id) + " (rows=" + peek.totalRowCount + (hasAll ? ", HAS ALL FIELDS" : ", missing some") + ")"
+      );
       if (hasAll && chosenTableId === null) chosenTableId = tables[i].id;
     }
     if (chosenTableId === null) {
@@ -2136,7 +2139,7 @@ html, body {
       );
     }
 
-    return dataTable.data.map(function (dataRow) {
+    var rows = dataTable.data.map(function (dataRow) {
       var row = {};
       Object.keys(FIELD_MAP).forEach(function (key) {
         row[key] = dataRow[colIndex[FIELD_MAP[key]]].value;
@@ -2144,6 +2147,20 @@ html, body {
       row.payment_inc_tax = Number(row.payment_inc_tax) || 0;
       return row;
     });
+
+    // TEMP DEBUG: which table got picked, how many rows each table has, and
+    // the actual date range of what we loaded -- to see whether last year's
+    // data lives in a different (excluded) table or just isn't in this one.
+    var dates = rows.map(function (r) { return new Date(r.payment_date); }).filter(function (d) { return !isNaN(d); });
+    var minDate = dates.length ? new Date(Math.min.apply(null, dates)) : null;
+    var maxDate = dates.length ? new Date(Math.max.apply(null, dates)) : null;
+    LAST_LOAD_DIAGNOSTICS =
+      "Tables: " + tableReport.join(" | ") +
+      " || Loaded " + rows.length + " rows from chosen table" +
+      " || Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
+      " to " + (maxDate ? maxDate.toISOString().slice(0, 10) : "?");
+
+    return rows;
   }
 
   // ---------------------------------------------------------------------
@@ -2197,11 +2214,11 @@ html, body {
       RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
       ALL_ROWS = rawRows;
       BASE_DATA = DATA;
-      hideStatus();
       populateMonthOptions();
       populateBranchFilterOptions();
       renderRawDataTable();
       render(monthSelect.value);
+      showStatus(LAST_LOAD_DIAGNOSTICS, false); // TEMP DEBUG
     } catch (err) {
       console.error("Payment Dashboard: reload after parameter change failed —", err);
       showStatus("โหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ") — ข้อมูลที่แสดงอยู่อาจไม่ตรงกับ vendor ปัจจุบัน", true);
@@ -2264,9 +2281,9 @@ html, body {
         RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
         ALL_ROWS = rawRows;
         USING_REAL_DATA = true;
-        hideStatus();
         document.getElementById("subtitleText").textContent = "Vendor Name";
         wireVendorNameFromParameter();
+        showStatus(LAST_LOAD_DIAGNOSTICS, false); // TEMP DEBUG
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
