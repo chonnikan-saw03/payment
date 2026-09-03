@@ -2145,15 +2145,26 @@ html, body {
       return row;
     });
 
-    // TEMP DEBUG: which table got picked, how many rows each table has, and
-    // the actual date range of what we loaded -- to see whether last year's
-    // data lives in a different (excluded) table or just isn't in this one.
+    // TEMP DEBUG: which table got picked, how many rows each table has, the
+    // actual date range of what we loaded, how many DISTINCT vendors show
+    // up (1 would mean the worksheet really is vendor-filtered; many means
+    // it isn't, and 10000 rows is likely an API cap silently truncating
+    // the full multi-vendor dataset), and whatever filters Tableau reports
+    // as actually active on the worksheet right now.
     var dates = rows.map(function (r) { return new Date(r.payment_date); }).filter(function (d) { return !isNaN(d); });
     var minDate = dates.length ? new Date(Math.min.apply(null, dates)) : null;
     var maxDate = dates.length ? new Date(Math.max.apply(null, dates)) : null;
+    var distinctVendors = {};
+    rows.forEach(function (r) { distinctVendors[r.vendor_id] = true; });
+    var vendorCount = Object.keys(distinctVendors).length;
+    var activeFilters = await worksheet.getFiltersAsync();
+    var filterReport = activeFilters.length
+      ? activeFilters.map(function (f) { return f.fieldName + "=" + JSON.stringify(f.appliedValues || f.minValue || f.maxValue || "?"); }).join(", ")
+      : "(no filters reported on this worksheet)";
     LAST_LOAD_DIAGNOSTICS =
       "Tables: " + tableReport.join(" | ") +
-      " || Loaded " + rows.length + " rows from chosen table" +
+      " || Loaded " + rows.length + " rows, " + vendorCount + " distinct vendor_id" +
+      " || Active filters: " + filterReport +
       " || Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
       " to " + (maxDate ? maxDate.toISOString().slice(0, 10) : "?");
 
