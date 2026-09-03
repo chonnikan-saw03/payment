@@ -492,6 +492,8 @@ html, body {
       </div>
     </div>
     <div class="header-controls">
+      <span>สาขา</span>
+      <select id="branchFilter"></select>
       <span>เดือน</span>
       <select id="monthSelect"></select>
       <button type="button" class="header-download-btn" id="downloadAllBtn" title="ดาวน์โหลดรายละเอียดทั้งหมด (Excel)">
@@ -799,7 +801,16 @@ html, body {
   // Populated by init() below -- from the real "Payment" worksheet when
   // running inside Tableau, or from buildSampleData() as a preview fallback
   // when opened directly in a browser (no Tableau host to talk to).
+  //
+  // DATA is the currently-active view (after the Branch filter, if any);
+  // BASE_DATA is the unfiltered baseline every filter is derived from, so
+  // the month dropdown and the branch options never shrink as you filter.
+  // ALL_ROWS holds every real transaction row (real-data mode only) so the
+  // Branch filter can re-aggregate an exact answer instead of an estimate.
   var DATA;
+  var BASE_DATA;
+  var ALL_ROWS = null;
+  var USING_REAL_DATA = false;
 
   // ---------------------------------------------------------------------
   // Formatting helpers
@@ -823,6 +834,14 @@ html, body {
     var parts = monthKey.split("-");
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     return d.toLocaleDateString("th-TH", { month: "short", year: "numeric" });
+  }
+
+  // English month label for the Month filter dropdown specifically (e.g.
+  // "Aug 2026") -- monthLabel() above stays Thai for the KPI/YTD sentences.
+  function monthLabelEn(monthKey) {
+    var parts = monthKey.split("-");
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   }
 
   function formatMillions(n) {
@@ -866,13 +885,111 @@ html, body {
     DATA.months.forEach(function (m) {
       var opt = document.createElement("option");
       opt.value = m.month;
-      opt.textContent = monthLabel(m.month);
+      opt.textContent = monthLabelEn(m.month);
       monthSelect.appendChild(opt);
     });
     monthSelect.value = DATA.months[DATA.months.length - 1].month;
   }
 
   monthSelect.addEventListener("change", function () { render(monthSelect.value); });
+
+  // ---------------------------------------------------------------------
+  // Branch filter -- narrows every panel (KPI, trend, channel, MCH2) down
+  // to one branch. Always derived from BASE_DATA (the unfiltered load), so
+  // re-filtering never loses branches or months from the dropdowns.
+  // ---------------------------------------------------------------------
+
+  var ALL_BRANCHES_VALUE = "__ALL__";
+  var branchFilter = document.getElementById("branchFilter");
+
+  function populateBranchFilterOptions() {
+    var names = {};
+    BASE_DATA.months.forEach(function (m) {
+      BASE_DATA.branchByMonth[m.month].forEach(function (r) { names[r.branch] = true; });
+    });
+    var branchNames = Object.keys(names).sort(function (a, b) { return a.localeCompare(b, "th"); });
+
+    branchFilter.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = ALL_BRANCHES_VALUE;
+    allOpt.textContent = "ทั้งหมด";
+    branchFilter.appendChild(allOpt);
+    branchNames.forEach(function (name) {
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      branchFilter.appendChild(opt);
+    });
+    branchFilter.value = ALL_BRANCHES_VALUE;
+  }
+
+  // Every month key in BASE_DATA gets an entry in the result, even if the
+  // filtered subset has none for that month (0 total, empty breakdowns) --
+  // otherwise the month dropdown would silently lose options after filtering.
+  function reconcileToBaseMonths(partial) {
+    var partialMonths = {};
+    partial.months.forEach(function (m) { partialMonths[m.month] = m; });
+
+    function fillMap(partialMap) {
+      var out = {};
+      BASE_DATA.months.forEach(function (bm) { out[bm.month] = partialMap[bm.month] || []; });
+      return out;
+    }
+
+    return {
+      months: BASE_DATA.months.map(function (bm) {
+        var pm = partialMonths[bm.month];
+        return { month: bm.month, total: pm ? pm.total : 0, year: bm.year, monthNum: bm.monthNum };
+      }),
+      dailyByMonth: fillMap(partial.dailyByMonth),
+      branchByMonth: fillMap(partial.branchByMonth),
+      channelByMonth: fillMap(partial.channelByMonth),
+      mch2ByMonth: fillMap(partial.mch2ByMonth),
+    };
+  }
+
+  // Real data has actual per-row branch/channel/mch2 correlation, so an
+  // exact re-aggregation from the raw rows is possible.
+  function applyBranchFilterReal(branch) {
+    var rows = branch === ALL_BRANCHES_VALUE ? ALL_ROWS : ALL_ROWS.filter(function (r) { return r.branch === branch; });
+    DATA = reconcileToBaseMonths(buildDataFromRows(rows));
+  }
+
+  // The fabricated sample data only has independent per-category totals
+  // (no row-level link between branch and channel/mch2/day), so a single
+  // branch is approximated by scaling every other breakdown down to that
+  // branch's share of the month -- good enough to preview the interaction,
+  // not meant to be exact (only real Tableau data is exact).
+  function applyBranchFilterSample(branch) {
+    if (branch === ALL_BRANCHES_VALUE) { DATA = BASE_DATA; return; }
+
+    var months = [], dailyByMonth = {}, branchByMonth = {}, channelByMonth = {}, mch2ByMonth = {};
+    BASE_DATA.months.forEach(function (m) {
+      var monthKey = m.month;
+      var branchRow = BASE_DATA.branchByMonth[monthKey].filter(function (r) { return r.branch === branch; })[0];
+      var ratio = branchRow && m.total ? branchRow.total / m.total : 0;
+
+      months.push({ month: monthKey, total: branchRow ? branchRow.total : 0, year: m.year, monthNum: m.monthNum });
+      dailyByMonth[monthKey] = BASE_DATA.dailyByMonth[monthKey].map(function (d) {
+        return { payment_date: d.payment_date, total: Math.round(d.total * ratio) };
+      });
+      branchByMonth[monthKey] = branchRow ? [branchRow] : [];
+      channelByMonth[monthKey] = BASE_DATA.channelByMonth[monthKey].map(function (c) {
+        return { channel: c.channel, total: Math.round(c.total * ratio) };
+      });
+      mch2ByMonth[monthKey] = BASE_DATA.mch2ByMonth[monthKey].map(function (c) {
+        return { mch2: c.mch2, total: Math.round(c.total * ratio) };
+      });
+    });
+
+    DATA = { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
+  }
+
+  branchFilter.addEventListener("change", function () {
+    if (USING_REAL_DATA) applyBranchFilterReal(branchFilter.value);
+    else applyBranchFilterSample(branchFilter.value);
+    render(monthSelect.value);
+  });
 
   // Every month in DATA.months that falls in the same year as selectedMonth,
   // up to and including it -- shared by the KPI card's YTD figure and the
@@ -2048,6 +2165,8 @@ html, body {
         if (!rawRows.length) throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มีข้อมูล');
         DATA = buildDataFromRows(rawRows);
         RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
+        ALL_ROWS = rawRows;
+        USING_REAL_DATA = true;
         hideStatus();
         document.getElementById("subtitleText").textContent = "ds_vdo_payment_article_fact";
       } catch (err) {
@@ -2061,7 +2180,9 @@ html, body {
       RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
     }
 
+    BASE_DATA = DATA;
     populateMonthOptions();
+    populateBranchFilterOptions();
     renderRawDataTable();
     render(monthSelect.value);
   }
