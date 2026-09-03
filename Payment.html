@@ -1020,7 +1020,7 @@ html, body {
       deltaEl.className = "delta " + (isUp ? "up" : "down");
       deltaEl.innerHTML =
         (isUp ? "▲ " : "▼ ") + Math.abs(growth).toFixed(2) + "%" +
-        ' <span class="vs">vs ' + monthLabel(prev.month) + ": " + formatAbbrev(prev.total) + "</span>";
+        ' <span class="vs">vs last month: ' + formatAbbrev(prev.total) + "</span>";
     } else {
       deltaEl.className = "delta";
       deltaEl.innerHTML = '<span class="vs">ไม่มีข้อมูลเดือนก่อนหน้าเปรียบเทียบ</span>';
@@ -1044,7 +1044,7 @@ html, body {
       ytdDeltaEl.className = "delta " + (ytdIsUp ? "up" : "down");
       ytdDeltaEl.innerHTML =
         (ytdIsUp ? "▲ " : "▼ ") + Math.abs(ytdGrowth).toFixed(2) + "%" +
-        ' <span class="vs">vs YTD ปีก่อน: ' + formatAbbrev(prevYtdTotal) + "</span>";
+        ' <span class="vs">vs YTD last year: ' + formatAbbrev(prevYtdTotal) + "</span>";
     } else {
       ytdDeltaEl.className = "delta";
       ytdDeltaEl.innerHTML = '<span class="vs">ไม่มีข้อมูล YTD ปีก่อนเปรียบเทียบ</span>';
