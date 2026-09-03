@@ -2097,7 +2097,8 @@ html, body {
     var dashboard = tableau.extensions.dashboardContent.dashboard;
     var worksheet = dashboard.worksheets.find(function (w) { return w.name === WORKSHEET_NAME; });
     if (!worksheet) {
-      throw new Error('ไม่พบ worksheet ชื่อ "' + WORKSHEET_NAME + '" ใน dashboard นี้');
+      var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
+      throw new Error('ไม่พบ worksheet ชื่อ "' + WORKSHEET_NAME + '" ใน dashboard นี้ (มี: ' + available + ")");
     }
 
     var tables = await worksheet.getUnderlyingTablesAsync();
