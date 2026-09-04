@@ -1827,6 +1827,21 @@ html, body {
     "Payment Inc Tax",
   ];
 
+  // Wider column set for the "Payment Detail" tab of the Excel download --
+  // adds Vendor Id/Vendor Name (not shown in the on-screen preview table,
+  // since the vendor is already in the header) but still skips Start
+  // Date/End Date, same as the on-screen table.
+  var DOWNLOAD_RAW_COLUMNS = [
+    "vendor_id", "vendor_name", "payment_date", "branch", "sls_grp_desc", "brand",
+    "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
+    "payment_inc_tax",
+  ];
+  var DOWNLOAD_RAW_COLUMN_LABELS = [
+    "Vendor Id", "Vendor Name", "Payment Date", "Branch", "Sls Grp Desc", "Brand",
+    "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
+    "Payment Inc Tax",
+  ];
+
   function renderRawDataTable() {
     var tbody = document.getElementById("rawDataTableBody");
     tbody.innerHTML = "";
@@ -1887,9 +1902,9 @@ html, body {
       dailyRows.push([d.payment_date, d.total]);
     });
 
-    var rawRows = [RAW_COLUMN_LABELS];
+    var rawRows = [DOWNLOAD_RAW_COLUMN_LABELS];
     RAW_SAMPLE_ROWS.forEach(function (r) {
-      rawRows.push(RAW_COLUMNS.map(function (col) { return r[col]; }));
+      rawRows.push(DOWNLOAD_RAW_COLUMNS.map(function (col) { return r[col]; }));
     });
 
     var wb = XLSX.utils.book_new();
