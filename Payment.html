@@ -2097,6 +2097,67 @@ html, body {
     return { rows: rows, worksheet: worksheet, dataTable: dataTable };
   }
 
+  // Same shape as fetchWorksheetRows, but pulls the worksheet's SUMMARY
+  // data (getSummaryDataAsync) instead of its underlying table. Underlying
+  // table data is the source-level detail behind the view (one row per
+  // transaction) even for a worksheet whose view is a tiny Month x Branch
+  // crosstab, so it still hits the ~10,000-row API cap for a high-volume
+  // vendor. Summary data is already aggregated to the view's level of
+  // detail (one row per Month x dimension combo actually shown), so it
+  // stays small regardless of transaction volume.
+  async function fetchWorksheetSummaryRows(worksheetName, fieldMap, rawKeys) {
+    rawKeys = rawKeys || [];
+    var dashboard = tableau.extensions.dashboardContent.dashboard;
+    var worksheet = dashboard.worksheets.find(function (w) { return w.name === worksheetName; });
+    if (!worksheet) {
+      var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
+      throw new Error('ไม่พบ worksheet ชื่อ "' + worksheetName + '" ใน dashboard นี้ (มี: ' + available + ")");
+    }
+
+    var dataTable = await worksheet.getSummaryDataAsync({
+      maxRows: 0,
+      ignoreSelection: true,
+      includeAllColumns: true,
+    });
+
+    // A measure pill's summary-data fieldName sometimes comes back wrapped
+    // in its aggregation (e.g. "SUM(Payment Inc Tax)" instead of "Payment
+    // Inc Tax"); match the literal name first, then fall back to unwrapping
+    // a leading AGG(...) before comparing.
+    function findColumnIndex(wantedFieldName) {
+      for (var i = 0; i < dataTable.columns.length; i++) {
+        if (dataTable.columns[i].fieldName === wantedFieldName) return dataTable.columns[i].index;
+      }
+      for (var j = 0; j < dataTable.columns.length; j++) {
+        var m = dataTable.columns[j].fieldName.match(/^[A-Za-z]+\((.+)\)$/);
+        if (m && m[1] === wantedFieldName) return dataTable.columns[j].index;
+      }
+      return -1;
+    }
+
+    var colIndex = {};
+    Object.keys(fieldMap).forEach(function (key) { colIndex[key] = findColumnIndex(fieldMap[key]); });
+
+    var missing = Object.keys(fieldMap).filter(function (key) { return colIndex[key] === -1; });
+    if (missing.length) {
+      throw new Error(
+        'worksheet "' + worksheetName + '" (summary data) ขาด field: ' + missing.map(function (k) { return fieldMap[k]; }).join(", ") +
+        " — field ที่มีจริง: " + dataTable.columns.map(function (c) { return c.fieldName; }).join(", ")
+      );
+    }
+
+    var rows = dataTable.data.map(function (dataRow) {
+      var row = {};
+      Object.keys(fieldMap).forEach(function (key) {
+        var dv = dataRow[colIndex[key]];
+        row[key] = rawKeys.indexOf(key) !== -1 ? dv : dv.value;
+      });
+      return row;
+    });
+
+    return { rows: rows, worksheet: worksheet, dataTable: dataTable };
+  }
+
   // "MONTH(Payment Date)" is a discrete date-part dimension; its raw
   // .value isn't guaranteed to be a plain parseable date the way a
   // continuous date field's is (and a bare month number 1-12 would parse
@@ -2153,7 +2214,7 @@ html, body {
     var fieldMap = { month: MONTH_FIELD_NAME, payment_inc_tax: PAYMENT_FIELD_NAME };
     fieldMap[dimKey] = dimFieldName;
 
-    var result = await fetchWorksheetRows(worksheetName, fieldMap, ["month"]);
+    var result = await fetchWorksheetSummaryRows(worksheetName, fieldMap, ["month"]);
 
     var totals = {}; // monthKey -> { name -> total }
     result.rows.forEach(function (r) {
