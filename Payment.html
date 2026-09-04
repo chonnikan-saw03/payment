@@ -647,8 +647,6 @@ html, body {
         <table class="data-table">
           <thead>
             <tr>
-              <th>Vendor Id</th>
-              <th>Vendor Name</th>
               <th>Payment Date</th>
               <th>Branch</th>
               <th>Sls Grp Desc</th>
@@ -1823,12 +1821,12 @@ html, body {
   // (the first 10 rows), just rendered into different places. Skips Start
   // Date/End Date.
   var RAW_COLUMNS = [
-    "vendor_id", "vendor_name", "payment_date", "branch", "sls_grp_desc", "brand",
+    "payment_date", "branch", "sls_grp_desc", "brand",
     "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
     "payment_inc_tax",
   ];
   var RAW_COLUMN_LABELS = [
-    "Vendor Id", "Vendor Name", "Payment Date", "Branch", "Sls Grp Desc", "Brand",
+    "Payment Date", "Branch", "Sls Grp Desc", "Brand",
     "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
     "Payment Inc Tax",
   ];
