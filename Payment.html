@@ -1848,9 +1848,11 @@ html, body {
   // from the "Payment" worksheet in Tableau (see loadDetailRowsForMonth).
   var RAW_SAMPLE_ROWS;
 
-  // On-screen preview table -- no Payment Date column, since every visible
-  // row already belongs to the selected month (shown in the panel
-  // subtitle instead). Skips Start Date/End Date too.
+  // Same column set for the on-screen preview table (first 10 rows) and
+  // the "Payment Detail" tab of the Excel download (every row) -- no
+  // Vendor Id/Name, no Payment Date (every row already belongs to the
+  // selected month, shown in the panel subtitle / the file name), no
+  // Start Date/End Date.
   var RAW_COLUMNS = [
     "branch", "sls_grp_desc", "brand",
     "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
@@ -1858,19 +1860,6 @@ html, body {
   ];
   var RAW_COLUMN_LABELS = [
     "Branch", "Sls Grp Desc", "Brand",
-    "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
-    "Payment Inc Tax",
-  ];
-
-  // Excel export gets every row (not just the first 10) and keeps Payment
-  // Date, since one exported month still spans many distinct days.
-  var DOWNLOAD_RAW_COLUMNS = [
-    "payment_date", "branch", "sls_grp_desc", "brand",
-    "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
-    "payment_inc_tax",
-  ];
-  var DOWNLOAD_RAW_COLUMN_LABELS = [
-    "Payment Date", "Branch", "Sls Grp Desc", "Brand",
     "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
     "Payment Inc Tax",
   ];
@@ -1965,9 +1954,9 @@ html, body {
       downloadBtn.disabled = false;
     }
 
-    var rawRows = [DOWNLOAD_RAW_COLUMN_LABELS];
+    var rawRows = [RAW_COLUMN_LABELS];
     (RAW_SAMPLE_ROWS || []).forEach(function (r) {
-      rawRows.push(DOWNLOAD_RAW_COLUMNS.map(function (col) { return r[col]; }));
+      rawRows.push(RAW_COLUMNS.map(function (col) { return r[col]; }));
     });
 
     var wb = XLSX.utils.book_new();
