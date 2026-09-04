@@ -87,39 +87,54 @@ html, body {
 
 .header-controls {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  align-items: stretch;
+  gap: 10px;
 }
 
-.header-controls select {
-  background: rgba(255, 255, 255, 0.12);
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+
+.filter-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.filter-group select {
+  background: transparent;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  padding: 6px 10px;
+  border: none;
+  padding: 0;
   font-size: 13px;
+  font-weight: 600;
 }
 
-.header-controls select option { color: #14213d; }
+.filter-group select option { color: #14213d; }
 
 .header-download-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.12);
+  justify-content: center;
+  width: 36px;
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
   cursor: pointer;
 }
 
 .header-download-btn:hover {
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .dashboard {
@@ -499,16 +514,19 @@ html, body {
       </div>
     </div>
     <div class="header-controls">
-      <span>Branch</span>
-      <select id="branchFilter"></select>
-      <span>Month</span>
-      <select id="monthSelect"></select>
+      <div class="filter-group">
+        <span class="filter-label">Year</span>
+        <select id="yearFilter"></select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Month</span>
+        <select id="monthSelect"></select>
+      </div>
       <button type="button" class="header-download-btn" id="downloadAllBtn" title="ดาวน์โหลดรายละเอียดทั้งหมด (Excel)">
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M8 1.5v9M4.5 7l3.5 3.5L11.5 7" />
           <path d="M2 12.5v1a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1" />
         </svg>
-        DOWNLOADS
       </button>
     </div>
   </header>
@@ -800,17 +818,13 @@ html, body {
     };
   }
 
-  // Populated by init() below -- from the real "Payment" worksheet when
-  // running inside Tableau, or from buildSampleData() as a preview fallback
-  // when opened directly in a browser (no Tableau host to talk to).
-  //
-  // DATA is the currently-active view (after the Branch filter, if any);
-  // BASE_DATA is the unfiltered baseline every filter is derived from, so
-  // the month dropdown and the branch options never shrink as you filter.
-  // ALL_ROWS holds every real transaction row (real-data mode only) so the
-  // Branch filter can re-aggregate an exact answer instead of an estimate.
+  // Populated by init() below -- from the real "Payment"/summary worksheets
+  // when running inside Tableau, or from buildSampleData() as a preview
+  // fallback when opened directly in a browser (no Tableau host to talk
+  // to). ALL_ROWS holds every real transaction row (real-data mode only),
+  // used for the Raw Detail sample, dailyByMonth, and the header vendor
+  // name lookup.
   var DATA;
-  var BASE_DATA;
   var ALL_ROWS = null;
   var SUMMARY_BRANCH_BY_MONTH = null;
   var SUMMARY_CHANNEL_BY_MONTH = null;
@@ -883,151 +897,49 @@ html, body {
   // ---------------------------------------------------------------------
 
   var monthSelect = document.getElementById("monthSelect");
+  var yearFilter = document.getElementById("yearFilter");
+  var ALL_YEARS_VALUE = "__ALL__";
 
+  function populateYearFilterOptions() {
+    var years = {};
+    DATA.months.forEach(function (m) { years[m.year] = true; });
+    var yearList = Object.keys(years).sort();
+
+    yearFilter.innerHTML = "";
+    var allOpt = document.createElement("option");
+    allOpt.value = ALL_YEARS_VALUE;
+    allOpt.textContent = "All Years";
+    yearFilter.appendChild(allOpt);
+    yearList.forEach(function (y) {
+      var opt = document.createElement("option");
+      opt.value = y;
+      opt.textContent = y;
+      yearFilter.appendChild(opt);
+    });
+    yearFilter.value = ALL_YEARS_VALUE;
+  }
+
+  // Year narrows which months this offers ("All Years" = every month).
   function populateMonthOptions() {
+    var selectedYear = yearFilter.value;
+    var months = selectedYear === ALL_YEARS_VALUE
+      ? DATA.months
+      : DATA.months.filter(function (m) { return String(m.year) === selectedYear; });
+
     monthSelect.innerHTML = "";
-    DATA.months.forEach(function (m) {
+    months.forEach(function (m) {
       var opt = document.createElement("option");
       opt.value = m.month;
       opt.textContent = monthLabel(m.month);
       monthSelect.appendChild(opt);
     });
-    monthSelect.value = DATA.months[DATA.months.length - 1].month;
+    monthSelect.value = months.length ? months[months.length - 1].month : "";
   }
 
   monthSelect.addEventListener("change", function () { render(monthSelect.value); });
 
-  // ---------------------------------------------------------------------
-  // Branch filter -- narrows every panel (KPI, trend, channel, MCH2) down
-  // to one branch. Always derived from BASE_DATA (the unfiltered load), so
-  // re-filtering never loses branches or months from the dropdowns.
-  // ---------------------------------------------------------------------
-
-  var ALL_BRANCHES_VALUE = "__ALL__";
-  var branchFilter = document.getElementById("branchFilter");
-
-  function populateBranchFilterOptions() {
-    var names = {};
-    BASE_DATA.months.forEach(function (m) {
-      BASE_DATA.branchByMonth[m.month].forEach(function (r) { names[r.branch] = true; });
-    });
-    var branchNames = Object.keys(names).sort(function (a, b) { return a.localeCompare(b, "th"); });
-
-    branchFilter.innerHTML = "";
-    var allOpt = document.createElement("option");
-    allOpt.value = ALL_BRANCHES_VALUE;
-    allOpt.textContent = "All";
-    branchFilter.appendChild(allOpt);
-    branchNames.forEach(function (name) {
-      var opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
-      branchFilter.appendChild(opt);
-    });
-    branchFilter.value = ALL_BRANCHES_VALUE;
-  }
-
-  // Every month key in BASE_DATA gets an entry in the result, even if the
-  // filtered subset has none for that month (0 total, empty breakdowns) --
-  // otherwise the month dropdown would silently lose options after filtering.
-  function reconcileToBaseMonths(partial) {
-    var partialMonths = {};
-    partial.months.forEach(function (m) { partialMonths[m.month] = m; });
-
-    function fillMap(partialMap) {
-      var out = {};
-      BASE_DATA.months.forEach(function (bm) { out[bm.month] = partialMap[bm.month] || []; });
-      return out;
-    }
-
-    return {
-      months: BASE_DATA.months.map(function (bm) {
-        var pm = partialMonths[bm.month];
-        return { month: bm.month, total: pm ? pm.total : 0, year: bm.year, monthNum: bm.monthNum };
-      }),
-      dailyByMonth: fillMap(partial.dailyByMonth),
-      branchByMonth: fillMap(partial.branchByMonth),
-      channelByMonth: fillMap(partial.channelByMonth),
-      mch2ByMonth: fillMap(partial.mch2ByMonth),
-    };
-  }
-
-  // Real data: the Branch breakdown is filtered exactly from
-  // SUMMARY_BRANCH_BY_MONTH (Tableau's own pre-aggregated Month x Branch
-  // sheet, immune to the row cap). Channel/MCH2 have no Branch dimension
-  // in their own summary sheets, so a specific branch falls back to
-  // re-aggregating them from the raw "Payment" rows for that branch
-  // (best-effort, same cap caveat as dailyByMonth below); "All" branches
-  // uses the exact summary breakdowns directly.
-  function applyBranchFilterReal(branch) {
-    var branchByMonth = {};
-    Object.keys(SUMMARY_BRANCH_BY_MONTH).forEach(function (monthKey) {
-      var rows = SUMMARY_BRANCH_BY_MONTH[monthKey];
-      branchByMonth[monthKey] = branch === ALL_BRANCHES_VALUE
-        ? rows
-        : rows.filter(function (r) { return r.branch === branch; });
-    });
-
-    var channelByMonth, mch2ByMonthRaw;
-    if (branch === ALL_BRANCHES_VALUE) {
-      channelByMonth = SUMMARY_CHANNEL_BY_MONTH;
-      mch2ByMonthRaw = SUMMARY_MCH2_BY_MONTH;
-    } else if (ALL_ROWS) {
-      var rawForBranch = ALL_ROWS.filter(function (r) { return r.branch === branch; });
-      var rawPartial = buildDataFromRows(rawForBranch);
-      channelByMonth = rawPartial.channelByMonth;
-      mch2ByMonthRaw = rawPartial.mch2ByMonth; // buildDataFromRows already top10+"อื่นๆ" buckets this
-    } else {
-      channelByMonth = {};
-      mch2ByMonthRaw = {};
-    }
-
-    var partial = buildDataFromDimensionSummaries(branchByMonth, channelByMonth, mch2ByMonthRaw);
-
-    if (ALL_ROWS) {
-      var rawRows = branch === ALL_BRANCHES_VALUE ? ALL_ROWS : ALL_ROWS.filter(function (r) { return r.branch === branch; });
-      var rawDaily = buildDataFromRows(rawRows).dailyByMonth;
-      Object.keys(rawDaily).forEach(function (monthKey) {
-        if (monthKey in partial.dailyByMonth) partial.dailyByMonth[monthKey] = rawDaily[monthKey];
-      });
-    }
-
-    DATA = reconcileToBaseMonths(partial);
-  }
-
-  // The fabricated sample data only has independent per-category totals
-  // (no row-level link between branch and channel/mch2/day), so a single
-  // branch is approximated by scaling every other breakdown down to that
-  // branch's share of the month -- good enough to preview the interaction,
-  // not meant to be exact (only real Tableau data is exact).
-  function applyBranchFilterSample(branch) {
-    if (branch === ALL_BRANCHES_VALUE) { DATA = BASE_DATA; return; }
-
-    var months = [], dailyByMonth = {}, branchByMonth = {}, channelByMonth = {}, mch2ByMonth = {};
-    BASE_DATA.months.forEach(function (m) {
-      var monthKey = m.month;
-      var branchRow = BASE_DATA.branchByMonth[monthKey].filter(function (r) { return r.branch === branch; })[0];
-      var ratio = branchRow && m.total ? branchRow.total / m.total : 0;
-
-      months.push({ month: monthKey, total: branchRow ? branchRow.total : 0, year: m.year, monthNum: m.monthNum });
-      dailyByMonth[monthKey] = BASE_DATA.dailyByMonth[monthKey].map(function (d) {
-        return { payment_date: d.payment_date, total: Math.round(d.total * ratio) };
-      });
-      branchByMonth[monthKey] = branchRow ? [branchRow] : [];
-      channelByMonth[monthKey] = BASE_DATA.channelByMonth[monthKey].map(function (c) {
-        return { channel: c.channel, total: Math.round(c.total * ratio) };
-      });
-      mch2ByMonth[monthKey] = BASE_DATA.mch2ByMonth[monthKey].map(function (c) {
-        return { mch2: c.mch2, total: Math.round(c.total * ratio) };
-      });
-    });
-
-    DATA = { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
-  }
-
-  branchFilter.addEventListener("change", function () {
-    if (USING_REAL_DATA) applyBranchFilterReal(branchFilter.value);
-    else applyBranchFilterSample(branchFilter.value);
+  yearFilter.addEventListener("change", function () {
+    populateMonthOptions();
     render(monthSelect.value);
   });
 
@@ -2437,9 +2349,8 @@ html, body {
   async function reloadAndRender() {
     try {
       DATA = await loadAllRealData();
-      BASE_DATA = DATA;
+      populateYearFilterOptions();
       populateMonthOptions();
-      populateBranchFilterOptions();
       renderRawDataTable();
       render(monthSelect.value);
       showStatus(LAST_LOAD_DIAGNOSTICS, false); // TEMP DEBUG
@@ -2519,9 +2430,8 @@ html, body {
       RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
     }
 
-    BASE_DATA = DATA;
+    populateYearFilterOptions();
     populateMonthOptions();
-    populateBranchFilterOptions();
     renderRawDataTable();
     render(monthSelect.value);
   }
