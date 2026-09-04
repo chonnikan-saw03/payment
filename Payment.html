@@ -812,6 +812,7 @@ html, body {
   var DATA;
   var BASE_DATA;
   var ALL_ROWS = null;
+  var SUMMARY_ROWS = null;
   var USING_REAL_DATA = false;
   var LAST_LOAD_DIAGNOSTICS = ""; // TEMP DEBUG
 
@@ -949,11 +950,24 @@ html, body {
     };
   }
 
-  // Real data has actual per-row branch/channel/mch2 correlation, so an
-  // exact re-aggregation from the raw rows is possible.
+  // Real data: re-aggregate from SUMMARY_ROWS (Tableau's own pre-aggregated
+  // Payment Summary sheet -- exact, and immune to the 10k-row cap that
+  // transaction-level data can hit), then overlay dailyByMonth from
+  // whatever the raw "Payment" rows cover for that same branch (best
+  // effort; may be incomplete for months the cap dropped).
   function applyBranchFilterReal(branch) {
-    var rows = branch === ALL_BRANCHES_VALUE ? ALL_ROWS : ALL_ROWS.filter(function (r) { return r.branch === branch; });
-    DATA = reconcileToBaseMonths(buildDataFromRows(rows));
+    var summaryRows = branch === ALL_BRANCHES_VALUE ? SUMMARY_ROWS : SUMMARY_ROWS.filter(function (r) { return r.branch === branch; });
+    var partial = buildDataFromSummaryRows(summaryRows);
+
+    if (ALL_ROWS) {
+      var rawRows = branch === ALL_BRANCHES_VALUE ? ALL_ROWS : ALL_ROWS.filter(function (r) { return r.branch === branch; });
+      var rawDaily = buildDataFromRows(rawRows).dailyByMonth;
+      Object.keys(rawDaily).forEach(function (monthKey) {
+        if (monthKey in partial.dailyByMonth) partial.dailyByMonth[monthKey] = rawDaily[monthKey];
+      });
+    }
+
+    DATA = reconcileToBaseMonths(partial);
   }
 
   // The fabricated sample data only has independent per-category totals
@@ -2001,6 +2015,23 @@ html, body {
   // ---------------------------------------------------------------------
 
   var WORKSHEET_NAME = "Payment";
+  var SUMMARY_WORKSHEET_NAME = "Payment Summary";
+
+  // "Payment Summary" is pre-aggregated by Tableau (Month x Branch x
+  // Channel x MCH2), so it stays well under the ~10,000-row cap that
+  // getUnderlyingTableDataAsync silently truncates at -- unlike pulling
+  // 2 years of transaction-level rows from "Payment" for a high-volume
+  // vendor. It's the authoritative source for months/branchByMonth/
+  // channelByMonth/mch2ByMonth; "Payment" is only still used for the
+  // Raw Detail table/export and for dailyByMonth (best-effort: whatever
+  // months happen to survive that worksheet's own 10k-row cap).
+  var SUMMARY_FIELD_MAP = {
+    month: "Month of Payment Date",
+    branch: "Branch",
+    sls_grp_desc: "Sls Grp Desc",
+    mch2: "Mch2",
+    payment_inc_tax: "Payment Inc Tax",
+  };
 
   var FIELD_MAP = {
     vendor_id: "Vendor Id",
@@ -2096,24 +2127,25 @@ html, body {
     return { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
   }
 
-  async function loadRealRowsFromWorksheet() {
+  // Shared by both worksheets: finds the sheet by name, picks whichever of
+  // its underlying tables actually has every needed field (a worksheet can
+  // be backed by more than one logical table via a join/blend, and
+  // blindly using tables[0] can silently read the wrong one), fetches all
+  // its rows, and maps them from fieldMap keys -> raw .value.
+  async function fetchWorksheetRows(worksheetName, fieldMap) {
     var dashboard = tableau.extensions.dashboardContent.dashboard;
-    var worksheet = dashboard.worksheets.find(function (w) { return w.name === WORKSHEET_NAME; });
+    var worksheet = dashboard.worksheets.find(function (w) { return w.name === worksheetName; });
     if (!worksheet) {
       var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
-      throw new Error('ไม่พบ worksheet ชื่อ "' + WORKSHEET_NAME + '" ใน dashboard นี้ (มี: ' + available + ")");
+      throw new Error('ไม่พบ worksheet ชื่อ "' + worksheetName + '" ใน dashboard นี้ (มี: ' + available + ")");
     }
 
     var tables = await worksheet.getUnderlyingTablesAsync();
     if (!tables.length) {
-      throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มี underlying table');
+      throw new Error('worksheet "' + worksheetName + '" ไม่มี underlying table');
     }
 
-    // A worksheet can be backed by more than one logical table (a join/
-    // blend); blindly using tables[0] can silently read the wrong one.
-    // Peek at each table's columns (1 row is enough) and use the first one
-    // that actually has every field we need.
-    var neededFields = Object.keys(FIELD_MAP).map(function (key) { return FIELD_MAP[key]; });
+    var neededFields = Object.keys(fieldMap).map(function (key) { return fieldMap[key]; });
     var chosenTableId = null;
     var tableReport = [];
     for (var i = 0; i < tables.length; i++) {
@@ -2125,14 +2157,15 @@ html, body {
       var peekFieldNames = peek.columns.map(function (col) { return col.fieldName; });
       var hasAll = neededFields.every(function (f) { return peekFieldNames.indexOf(f) !== -1; });
       tableReport.push(
-        (tables[i].caption || tables[i].id) + " (rows=" + peek.totalRowCount + (hasAll ? ", HAS ALL FIELDS" : ", missing some") + ")"
+        (tables[i].caption || tables[i].id) + " (rows=" + peek.totalRowCount +
+        (hasAll ? ", HAS ALL FIELDS" : ", fields=[" + peekFieldNames.join(", ") + "]") + ")"
       );
       if (hasAll && chosenTableId === null) chosenTableId = tables[i].id;
     }
     if (chosenTableId === null) {
       throw new Error(
-        "ไม่มี underlying table ไหนมีครบทุก field ที่ต้องการ (" + neededFields.join(", ") + ") — table ที่มี: " +
-        tableReport.join(" | ")
+        'worksheet "' + worksheetName + '" ไม่มี underlying table ไหนมีครบทุก field ที่ต้องการ (' +
+        neededFields.join(", ") + ") — table ที่มี: " + tableReport.join(" | ")
       );
     }
 
@@ -2145,23 +2178,31 @@ html, body {
     var colIndex = {};
     dataTable.columns.forEach(function (col) { colIndex[col.fieldName] = col.index; });
 
-    var missing = Object.keys(FIELD_MAP).filter(function (key) {
-      return !(FIELD_MAP[key] in colIndex);
+    var missing = Object.keys(fieldMap).filter(function (key) {
+      return !(fieldMap[key] in colIndex);
     });
     if (missing.length) {
       throw new Error(
-        "worksheet ขาด field: " + missing.map(function (k) { return FIELD_MAP[k]; }).join(", ")
+        'worksheet "' + worksheetName + '" ขาด field: ' + missing.map(function (k) { return fieldMap[k]; }).join(", ") +
+        " — field ที่มีจริง: " + dataTable.columns.map(function (c) { return c.fieldName; }).join(", ")
       );
     }
 
     var rows = dataTable.data.map(function (dataRow) {
       var row = {};
-      Object.keys(FIELD_MAP).forEach(function (key) {
-        row[key] = dataRow[colIndex[FIELD_MAP[key]]].value;
+      Object.keys(fieldMap).forEach(function (key) {
+        row[key] = dataRow[colIndex[fieldMap[key]]].value;
       });
-      row.payment_inc_tax = Number(row.payment_inc_tax) || 0;
       return row;
     });
+
+    return { rows: rows, worksheet: worksheet, dataTable: dataTable };
+  }
+
+  async function loadRealRowsFromWorksheet() {
+    var result = await fetchWorksheetRows(WORKSHEET_NAME, FIELD_MAP);
+    var rows = result.rows;
+    rows.forEach(function (r) { r.payment_inc_tax = Number(r.payment_inc_tax) || 0; });
 
     // TEMP DEBUG: which table got picked, how many rows each table has, the
     // actual date range of what we loaded, how many DISTINCT vendors show
@@ -2175,23 +2216,188 @@ html, body {
     var distinctVendors = {};
     rows.forEach(function (r) { distinctVendors[r.vendor_id] = true; });
     var vendorCount = Object.keys(distinctVendors).length;
-    var activeFilters = await worksheet.getFiltersAsync();
+    var activeFilters = await result.worksheet.getFiltersAsync();
     var filterReport = activeFilters.length
       ? activeFilters.map(function (f) {
           var n = (f.appliedValues && f.appliedValues.length) || null;
           return f.fieldName + (n === null ? "" : " (" + n + " values)");
         }).join(", ")
       : "(none)";
-    var capNote = dataTable.isTotalRowCountLimited
-      ? " CAPPED (true total ≈ " + dataTable.totalRowCount + "+)"
-      : " (not capped, totalRowCount=" + dataTable.totalRowCount + ")";
-    LAST_LOAD_DIAGNOSTICS =
-      "Loaded " + rows.length + " rows" + capNote + ", " + vendorCount + " distinct vendor_id" +
+    var capNote = result.dataTable.isTotalRowCountLimited
+      ? " CAPPED (true total ≈ " + result.dataTable.totalRowCount + "+)"
+      : " (not capped, totalRowCount=" + result.dataTable.totalRowCount + ")";
+    LAST_LOAD_DIAGNOSTICS +=
+      " | Payment: " + rows.length + " rows" + capNote + ", " + vendorCount + " distinct vendor_id" +
       " | Filters: " + filterReport +
       " | Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
       " to " + (maxDate ? maxDate.toISOString().slice(0, 10) : "?");
 
     return rows;
+  }
+
+  // "Month of Payment Date" is a discrete date-part dimension; its raw
+  // .value isn't guaranteed to be a plain parseable date the way a
+  // continuous date field's is, so fall back to parsing .formattedValue
+  // (e.g. "January 2025") if .value doesn't parse.
+  async function loadSummaryRowsFromWorksheet() {
+    var dashboard = tableau.extensions.dashboardContent.dashboard;
+    var worksheet = dashboard.worksheets.find(function (w) { return w.name === SUMMARY_WORKSHEET_NAME; });
+    if (!worksheet) {
+      var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
+      throw new Error('ไม่พบ worksheet ชื่อ "' + SUMMARY_WORKSHEET_NAME + '" ใน dashboard นี้ (มี: ' + available + ")");
+    }
+
+    var tables = await worksheet.getUnderlyingTablesAsync();
+    if (!tables.length) {
+      throw new Error('worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มี underlying table');
+    }
+
+    var neededFields = Object.keys(SUMMARY_FIELD_MAP).map(function (key) { return SUMMARY_FIELD_MAP[key]; });
+    var chosenTableId = null;
+    var tableReport = [];
+    for (var i = 0; i < tables.length; i++) {
+      var peek = await worksheet.getUnderlyingTableDataAsync(tables[i].id, {
+        maxRows: 1,
+        ignoreSelection: true,
+        includeAllColumns: true,
+      });
+      var peekFieldNames = peek.columns.map(function (col) { return col.fieldName; });
+      var hasAll = neededFields.every(function (f) { return peekFieldNames.indexOf(f) !== -1; });
+      tableReport.push(
+        (tables[i].caption || tables[i].id) + " (rows=" + peek.totalRowCount +
+        (hasAll ? ", HAS ALL FIELDS" : ", fields=[" + peekFieldNames.join(", ") + "]") + ")"
+      );
+      if (hasAll && chosenTableId === null) chosenTableId = tables[i].id;
+    }
+    if (chosenTableId === null) {
+      throw new Error(
+        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มี underlying table ไหนมีครบทุก field ที่ต้องการ (' +
+        neededFields.join(", ") + ") — table ที่มี: " + tableReport.join(" | ")
+      );
+    }
+
+    var dataTable = await worksheet.getUnderlyingTableDataAsync(chosenTableId, {
+      maxRows: 0,
+      ignoreSelection: true,
+      includeAllColumns: true,
+    });
+
+    var colIndex = {};
+    dataTable.columns.forEach(function (col) { colIndex[col.fieldName] = col.index; });
+
+    var missing = Object.keys(SUMMARY_FIELD_MAP).filter(function (key) {
+      return !(SUMMARY_FIELD_MAP[key] in colIndex);
+    });
+    if (missing.length) {
+      throw new Error(
+        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" ขาด field: ' +
+        missing.map(function (k) { return SUMMARY_FIELD_MAP[k]; }).join(", ") +
+        " — field ที่มีจริง: " + dataTable.columns.map(function (c) { return c.fieldName; }).join(", ")
+      );
+    }
+
+    var monthColIndex = colIndex[SUMMARY_FIELD_MAP.month];
+
+    var rows = dataTable.data.map(function (dataRow) {
+      var row = {};
+      Object.keys(SUMMARY_FIELD_MAP).forEach(function (key) {
+        row[key] = dataRow[colIndex[SUMMARY_FIELD_MAP[key]]].value;
+      });
+      row.payment_inc_tax = Number(row.payment_inc_tax) || 0;
+
+      var monthDataValue = dataRow[monthColIndex];
+      var monthDate = new Date(monthDataValue.value);
+      if (isNaN(monthDate)) monthDate = new Date(monthDataValue.formattedValue);
+      row._monthDate = monthDate; // used to derive monthKey; NaN if unparseable
+      return row;
+    });
+
+    var badMonth = rows.find(function (r) { return isNaN(r._monthDate); });
+    if (badMonth) {
+      throw new Error(
+        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" field "' + SUMMARY_FIELD_MAP.month +
+        '" แปลงเป็นวันที่ไม่ได้ (ตัวอย่างค่า: ' + JSON.stringify(dataTable.data[0][monthColIndex]) + ")"
+      );
+    }
+
+    LAST_LOAD_DIAGNOSTICS +=
+      " | Summary: " + rows.length + " rows" +
+      (dataTable.isTotalRowCountLimited ? " CAPPED" : " (not capped, total=" + dataTable.totalRowCount + ")");
+
+    return rows;
+  }
+
+  function buildDataFromSummaryRows(summaryRows) {
+    var byMonth = {};
+    summaryRows.forEach(function (r) {
+      var monthKey = r._monthDate.getFullYear() + "-" + pad2(r._monthDate.getMonth() + 1);
+      (byMonth[monthKey] = byMonth[monthKey] || []).push(r);
+    });
+
+    var monthKeys = Object.keys(byMonth).sort();
+    var months = monthKeys.map(function (monthKey) {
+      var rowsInMonth = byMonth[monthKey];
+      var total = rowsInMonth.reduce(function (a, r) { return a + r.payment_inc_tax; }, 0);
+      var parts = monthKey.split("-");
+      return { month: monthKey, total: total, year: Number(parts[0]), monthNum: Number(parts[1]) };
+    });
+
+    var branchByMonth = {}, channelByMonth = {}, mch2ByMonth = {};
+    monthKeys.forEach(function (monthKey) {
+      var rowsInMonth = byMonth[monthKey];
+      branchByMonth[monthKey] = groupSorted(rowsInMonth, "branch");
+      channelByMonth[monthKey] = groupSorted(rowsInMonth, "sls_grp_desc");
+
+      var mch2Sorted = groupSorted(rowsInMonth, "mch2");
+      if (mch2Sorted.length > 11) {
+        var top10 = mch2Sorted.slice(0, 10);
+        var otherTotal = mch2Sorted.slice(10).reduce(function (a, r) { return a + r.total; }, 0);
+        top10.push({ mch2: "อื่นๆ", total: otherTotal });
+        mch2ByMonth[monthKey] = top10;
+      } else {
+        mch2ByMonth[monthKey] = mch2Sorted;
+      }
+    });
+
+    // dailyByMonth isn't available from this monthly-grain source; filled
+    // in separately from the "Payment" worksheet's rows where available.
+    var dailyByMonth = {};
+    monthKeys.forEach(function (monthKey) { dailyByMonth[monthKey] = []; });
+
+    return { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
+  }
+
+  // "Payment Summary" (pre-aggregated, immune to the row cap) is the
+  // source of truth for months/branchByMonth/channelByMonth/mch2ByMonth.
+  // "Payment" (transaction-level) only fills in dailyByMonth and the Raw
+  // Detail sample -- best-effort, since its own 2-year pull can still hit
+  // the same cap for a high-volume vendor; a failure there degrades the
+  // dashboard (no daily trend / raw detail for out-of-range months) but
+  // doesn't block it, since the summary aggregates are what matter most.
+  async function loadAllRealData() {
+    LAST_LOAD_DIAGNOSTICS = "";
+
+    var summaryRows = await loadSummaryRowsFromWorksheet();
+    if (!summaryRows.length) throw new Error('worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มีข้อมูล');
+    var data = buildDataFromSummaryRows(summaryRows);
+    SUMMARY_ROWS = summaryRows;
+
+    var rawRows = [];
+    try {
+      rawRows = await loadRealRowsFromWorksheet();
+      var rawData = buildDataFromRows(rawRows);
+      Object.keys(rawData.dailyByMonth).forEach(function (monthKey) {
+        if (monthKey in data.dailyByMonth) data.dailyByMonth[monthKey] = rawData.dailyByMonth[monthKey];
+      });
+    } catch (err) {
+      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch failed (daily trend / raw detail will be limited) —', err);
+      LAST_LOAD_DIAGNOSTICS += " | Payment: FAILED (" + err.message + ")";
+    }
+
+    ALL_ROWS = rawRows.length ? rawRows : null;
+    RAW_SAMPLE_ROWS = rawRows.length ? rawRows.slice(0, 10) : SAMPLE_RAW_ROWS;
+
+    return data;
   }
 
   // ---------------------------------------------------------------------
@@ -2239,11 +2445,7 @@ html, body {
   // its new value, not the worksheet re-querying itself.
   async function reloadAndRender() {
     try {
-      var rawRows = await loadRealRowsFromWorksheet();
-      if (!rawRows.length) throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มีข้อมูล');
-      DATA = buildDataFromRows(rawRows);
-      RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
-      ALL_ROWS = rawRows;
+      DATA = await loadAllRealData();
       BASE_DATA = DATA;
       populateMonthOptions();
       populateBranchFilterOptions();
@@ -2310,11 +2512,7 @@ html, body {
     if (insideTableau) {
       showStatus("กำลังโหลดข้อมูลจาก Tableau...", false);
       try {
-        var rawRows = await loadRealRowsFromWorksheet();
-        if (!rawRows.length) throw new Error('worksheet "' + WORKSHEET_NAME + '" ไม่มีข้อมูล');
-        DATA = buildDataFromRows(rawRows);
-        RAW_SAMPLE_ROWS = rawRows.slice(0, 10);
-        ALL_ROWS = rawRows;
+        DATA = await loadAllRealData();
         USING_REAL_DATA = true;
         document.getElementById("subtitleText").textContent = "Vendor Name";
         wireVendorNameFromParameter();
