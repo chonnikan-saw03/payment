@@ -485,13 +485,35 @@ html, body {
 .data-table td.growth-up { color: var(--good); font-weight: 600; }
 .data-table td.growth-down { color: var(--bad); font-weight: 600; }
 
-/* MCH2 category names are long Thai descriptions -- let them wrap instead
-   of forcing the table wider than its (narrow, 3-column-row) panel and
-   triggering a horizontal scrollbar. */
+/* Branch/MCH2/Channel names can be long Thai text, and the numeric column
+   headers ("Payment Inc Tax" etc.) are wide relative to a narrow
+   3-column-row panel -- let both wrap and tighten column padding instead
+   of forcing the table wider than its panel and triggering a horizontal
+   scrollbar. */
+#branchTableWrap .data-table td.col-name,
+#branchTableWrap .data-table th.col-name,
 #mch2TableWrap .data-table td.col-name,
-#mch2TableWrap .data-table th.col-name {
+#mch2TableWrap .data-table th.col-name,
+#channelTableWrap .data-table td.col-name,
+#channelTableWrap .data-table th.col-name {
   white-space: normal;
   word-break: break-word;
+}
+
+#branchTableWrap .data-table th,
+#mch2TableWrap .data-table th,
+#channelTableWrap .data-table th {
+  white-space: normal;
+}
+
+#branchTableWrap .data-table th,
+#branchTableWrap .data-table td,
+#mch2TableWrap .data-table th,
+#mch2TableWrap .data-table td,
+#channelTableWrap .data-table th,
+#channelTableWrap .data-table td {
+  padding-left: 6px;
+  padding-right: 6px;
 }
 </style>
 </head>
