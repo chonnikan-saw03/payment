@@ -2026,7 +2026,7 @@ html, body {
   // Raw Detail table/export and for dailyByMonth (best-effort: whatever
   // months happen to survive that worksheet's own 10k-row cap).
   var SUMMARY_FIELD_MAP = {
-    month: "Month of Payment Date",
+    month: "MONTH(Payment Date)",
     branch: "Branch",
     sls_grp_desc: "Sls Grp Desc",
     mch2: "Mch2",
@@ -2307,7 +2307,13 @@ html, body {
 
       var monthDataValue = dataRow[monthColIndex];
       var monthDate = new Date(monthDataValue.value);
-      if (isNaN(monthDate)) monthDate = new Date(monthDataValue.formattedValue);
+      // If .value is just a bare month number (1-12) rather than a real
+      // date, new Date(1) "succeeds" (parses as an epoch-adjacent
+      // timestamp) without ever throwing -- guard against that silently
+      // wrong case too, not just outright NaN.
+      if (isNaN(monthDate) || monthDate.getFullYear() < 2000 || monthDate.getFullYear() > 2100) {
+        monthDate = new Date(monthDataValue.formattedValue);
+      }
       row._monthDate = monthDate; // used to derive monthKey; NaN if unparseable
       return row;
     });
@@ -2320,9 +2326,16 @@ html, body {
       );
     }
 
+    var monthKeysSeen = {};
+    rows.forEach(function (r) {
+      var k = r._monthDate.getFullYear() + "-" + pad2(r._monthDate.getMonth() + 1);
+      monthKeysSeen[k] = true;
+    });
     LAST_LOAD_DIAGNOSTICS +=
       " | Summary: " + rows.length + " rows" +
-      (dataTable.isTotalRowCountLimited ? " CAPPED" : " (not capped, total=" + dataTable.totalRowCount + ")");
+      (dataTable.isTotalRowCountLimited ? " CAPPED" : " (not capped, total=" + dataTable.totalRowCount + ")") +
+      ", months=[" + Object.keys(monthKeysSeen).sort().join(", ") + "]" +
+      ", raw month sample=" + JSON.stringify(dataTable.data[0][monthColIndex]);
 
     return rows;
   }
