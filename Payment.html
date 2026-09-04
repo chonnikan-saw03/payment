@@ -1923,6 +1923,12 @@ html, body {
   var BRANCH_SUMMARY_WORKSHEET = "Payment by Branch";
   var CHANNEL_SUMMARY_WORKSHEET = "Payment by Channel";
   var MCH2_SUMMARY_WORKSHEET = "Payment by MCH2";
+  // 2-column sheet (Payment Date, Payment Inc Tax), same idea: pulled via
+  // getSummaryDataAsync so it stays at true day-grain (a couple hundred
+  // rows even across 2 years) instead of the "Payment" sheet's full
+  // transaction-level pull, which still hits the row cap for a
+  // high-volume vendor even though only 10 sample rows are ever shown.
+  var DAILY_WORKSHEET = "Payment Daily";
   var MONTH_FIELD_NAME = "MONTH(Payment Date)";
   var PAYMENT_FIELD_NAME = "Payment Inc Tax";
 
@@ -2028,8 +2034,9 @@ html, body {
   // rawKeys: fieldMap keys to keep as the raw DataValue object instead of
   // resolving .value -- needed for a discrete date-part field, where the
   // caller has to fall back to .formattedValue if .value doesn't parse.
-  async function fetchWorksheetRows(worksheetName, fieldMap, rawKeys) {
+  async function fetchWorksheetRows(worksheetName, fieldMap, rawKeys, maxRows) {
     rawKeys = rawKeys || [];
+    maxRows = typeof maxRows === "number" ? maxRows : 0;
     var dashboard = tableau.extensions.dashboardContent.dashboard;
     var worksheet = dashboard.worksheets.find(function (w) { return w.name === worksheetName; });
     if (!worksheet) {
@@ -2067,7 +2074,7 @@ html, body {
     }
 
     var dataTable = await worksheet.getUnderlyingTableDataAsync(chosenTableId, {
-      maxRows: 0,
+      maxRows: maxRows,
       ignoreSelection: true,
       includeAllColumns: true,
     });
@@ -2172,8 +2179,8 @@ html, body {
     return d;
   }
 
-  async function loadRealRowsFromWorksheet() {
-    var result = await fetchWorksheetRows(WORKSHEET_NAME, FIELD_MAP);
+  async function loadRealRowsFromWorksheet(maxRows) {
+    var result = await fetchWorksheetRows(WORKSHEET_NAME, FIELD_MAP, [], maxRows);
     var rows = result.rows;
     rows.forEach(function (r) { r.payment_inc_tax = Number(r.payment_inc_tax) || 0; });
 
@@ -2245,6 +2252,40 @@ html, body {
     return byMonth;
   }
 
+  // Pulls the dedicated 2-column "Payment Daily" sheet (Payment Date,
+  // Payment Inc Tax) via getSummaryDataAsync, so daily-trend data stays at
+  // true day-grain (at most a few hundred rows across 2 years) and never
+  // approaches the row cap regardless of how many transactions the vendor
+  // has -- unlike pulling day totals out of the transaction-level
+  // "Payment" sheet, which still hits the cap for a high-volume vendor.
+  async function loadDailySummary() {
+    var fieldMap = { payment_date: "Payment Date", payment_inc_tax: PAYMENT_FIELD_NAME };
+    var result = await fetchWorksheetSummaryRows(DAILY_WORKSHEET, fieldMap);
+
+    var dayTotals = {}; // monthKey -> { dayKey -> total }
+    result.rows.forEach(function (r) {
+      var d = new Date(r.payment_date);
+      if (isNaN(d)) return;
+      var monthKey = d.getFullYear() + "-" + pad2(d.getMonth() + 1);
+      var dayKey = monthKey + "-" + pad2(d.getDate());
+      dayTotals[monthKey] = dayTotals[monthKey] || {};
+      dayTotals[monthKey][dayKey] = (dayTotals[monthKey][dayKey] || 0) + (Number(r.payment_inc_tax) || 0);
+    });
+
+    var dailyByMonth = {};
+    Object.keys(dayTotals).forEach(function (monthKey) {
+      dailyByMonth[monthKey] = Object.keys(dayTotals[monthKey]).sort().map(function (dayKey) {
+        return { payment_date: dayKey, total: dayTotals[monthKey][dayKey] };
+      });
+    });
+
+    LAST_LOAD_DIAGNOSTICS +=
+      " | " + DAILY_WORKSHEET + ": " + result.rows.length + " rows" +
+      (result.dataTable.isTotalRowCountLimited ? " CAPPED" : " (total=" + result.dataTable.totalRowCount + ")");
+
+    return dailyByMonth;
+  }
+
   function buildDataFromDimensionSummaries(branchByMonth, channelByMonth, mch2ByMonthRaw) {
     var mch2ByMonth = {};
     Object.keys(mch2ByMonthRaw).forEach(function (monthKey) {
@@ -2288,13 +2329,14 @@ html, body {
     };
   }
 
-  // "Payment Summary" (pre-aggregated, immune to the row cap) is the
-  // source of truth for months/branchByMonth/channelByMonth/mch2ByMonth.
-  // "Payment" (transaction-level) only fills in dailyByMonth and the Raw
-  // Detail sample -- best-effort, since its own 2-year pull can still hit
-  // the same cap for a high-volume vendor; a failure there degrades the
-  // dashboard (no daily trend / raw detail for out-of-range months) but
-  // doesn't block it, since the summary aggregates are what matter most.
+  // "Payment by Branch/Channel/MCH2" (pre-aggregated via getSummaryDataAsync,
+  // immune to the row cap) are the source of truth for
+  // months/branchByMonth/channelByMonth/mch2ByMonth. "Payment Daily" (also
+  // pre-aggregated) supplies dailyByMonth. "Payment" (transaction-level)
+  // only fills in the raw-detail sample and the header's vendor-name
+  // lookup -- best-effort, since a failure there degrades the dashboard
+  // (no raw detail table / vendor name) but doesn't block it, since the
+  // aggregated sheets are what actually drive every chart.
   async function loadAllRealData() {
     LAST_LOAD_DIAGNOSTICS = "";
 
@@ -2308,15 +2350,37 @@ html, body {
     SUMMARY_CHANNEL_BY_MONTH = channelByMonth;
     SUMMARY_MCH2_BY_MONTH = mch2ByMonth;
 
+    // Daily trend from the dedicated "Payment Daily" sheet first (immune
+    // to the row cap, see loadDailySummary above). If that succeeds, the
+    // "Payment" sheet's own pull no longer needs to cover the full 2-year
+    // range -- it only has to supply a small raw-detail sample and a row
+    // for the header's vendor-name lookup, so cap it small to stay well
+    // under the row limit even for a high-volume vendor. If it fails
+    // (e.g. "Payment Daily" isn't on this dashboard yet), fall back to
+    // pulling daily totals out of the full "Payment" sheet, same as before.
+    var dailyFromDedicatedSheet = false;
+    try {
+      var dailyByMonth = await loadDailySummary();
+      Object.keys(dailyByMonth).forEach(function (monthKey) {
+        if (monthKey in data.dailyByMonth) data.dailyByMonth[monthKey] = dailyByMonth[monthKey];
+      });
+      dailyFromDedicatedSheet = true;
+    } catch (err) {
+      console.error('Payment Dashboard: "' + DAILY_WORKSHEET + '" fetch failed (falling back to "' + WORKSHEET_NAME + '" for daily trend) —', err);
+      LAST_LOAD_DIAGNOSTICS += " | " + DAILY_WORKSHEET + ": FAILED (" + err.message + ")";
+    }
+
     var rawRows = [];
     try {
-      rawRows = await loadRealRowsFromWorksheet();
+      rawRows = await loadRealRowsFromWorksheet(dailyFromDedicatedSheet ? 300 : 0);
       var rawData = buildDataFromRows(rawRows);
-      Object.keys(rawData.dailyByMonth).forEach(function (monthKey) {
-        if (monthKey in data.dailyByMonth) data.dailyByMonth[monthKey] = rawData.dailyByMonth[monthKey];
-      });
+      if (!dailyFromDedicatedSheet) {
+        Object.keys(rawData.dailyByMonth).forEach(function (monthKey) {
+          if (monthKey in data.dailyByMonth) data.dailyByMonth[monthKey] = rawData.dailyByMonth[monthKey];
+        });
+      }
     } catch (err) {
-      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch failed (daily trend / raw detail will be limited) —', err);
+      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch failed (raw detail sample / vendor name will be limited) —', err);
       LAST_LOAD_DIAGNOSTICS += " | Payment: FAILED (" + err.message + ")";
     }
 
