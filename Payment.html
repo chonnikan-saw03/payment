@@ -669,7 +669,6 @@ html, body {
         <table class="data-table">
           <thead>
             <tr>
-              <th>Payment Date</th>
               <th>Branch</th>
               <th>Sls Grp Desc</th>
               <th>Brand</th>
@@ -825,11 +824,10 @@ html, body {
   // Populated by init() below -- from the real "Payment"/summary worksheets
   // when running inside Tableau, or from buildSampleData() as a preview
   // fallback when opened directly in a browser (no Tableau host to talk
-  // to). ALL_ROWS holds every real transaction row (real-data mode only),
-  // used for the Raw Detail sample, dailyByMonth, and the header vendor
-  // name lookup.
+  // to). CURRENT_VENDOR_ROW_SAMPLE holds one unfiltered-by-date row from
+  // the "Payment" worksheet, used only for the header's vendor name.
   var DATA;
-  var ALL_ROWS = null;
+  var CURRENT_VENDOR_ROW_SAMPLE = null;
   var SUMMARY_BRANCH_BY_MONTH = null;
   var SUMMARY_CHANNEL_BY_MONTH = null;
   var SUMMARY_MCH2_BY_MONTH = null;
@@ -933,11 +931,15 @@ html, body {
     monthSelect.value = months.length ? months[months.length - 1].month : "";
   }
 
-  monthSelect.addEventListener("change", function () { render(monthSelect.value); });
+  monthSelect.addEventListener("change", function () {
+    render(monthSelect.value);
+    loadAndRenderDetailForMonth(monthSelect.value);
+  });
 
   yearFilter.addEventListener("change", function () {
     populateMonthOptions();
     render(monthSelect.value);
+    loadAndRenderDetailForMonth(monthSelect.value);
   });
 
   // Every month in DATA.months that falls in the same year as selectedMonth,
@@ -1811,13 +1813,15 @@ html, body {
     applyMch2View();
     renderTrend(selectedMonth);
     renderYtdChart(selectedMonth);
-    renderRawDataTable(selectedMonth);
   }
 
   // ---------------------------------------------------------------------
-  // Raw payment detail — up to 10 real rows queried from
+  // Raw payment detail — every real row queried from
   // ds_vdo_payment_article_fact whose Payment Date falls in the currently
-  // selected month, every column, shown as-is.
+  // selected month (a live Tableau filter, not a client-side slice — see
+  // loadDetailRowsForMonth below), every column, shown as-is. The
+  // on-screen table previews the first 10; the Excel download gets all of
+  // them.
   // ---------------------------------------------------------------------
 
   // Fallback preview rows, used only when there's no real Tableau host to
@@ -1835,40 +1839,42 @@ html, body {
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาอุดรธานี", sls_grp_desc: "Anyhome", brand: "ROCKA", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1359068", article_name_th: "E23K-65 ชุดแผ่นปิดข้างตู้ 58-86 สีขาว", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
   ];
 
-  // Populated by init() -- SAMPLE_RAW_ROWS as a preview fallback, or up to
-  // 300 real rows pulled from the "Payment" worksheet in Tableau. Not all
-  // 300 are shown at once; rawRowsForMonth() below filters this pool down
-  // to the selected month and takes the first 10 matches.
+  // Populated by loadAndRenderDetailForMonth() -- SAMPLE_RAW_ROWS as a
+  // preview fallback, or every real row for the selected month pulled
+  // from the "Payment" worksheet in Tableau (see loadDetailRowsForMonth).
   var RAW_SAMPLE_ROWS;
 
-  // Same column set for the on-screen preview table and the "Payment
-  // Detail" tab of the Excel download -- both read from
-  // rawRowsForMonth(selectedMonth), just rendered into different places.
-  // Skips Start Date/End Date.
+  // On-screen preview table -- no Payment Date column, since every visible
+  // row already belongs to the selected month (shown in the panel
+  // subtitle instead). Skips Start Date/End Date too.
   var RAW_COLUMNS = [
-    "payment_date", "branch", "sls_grp_desc", "brand",
+    "branch", "sls_grp_desc", "brand",
     "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
     "payment_inc_tax",
   ];
   var RAW_COLUMN_LABELS = [
+    "Branch", "Sls Grp Desc", "Brand",
+    "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
+    "Payment Inc Tax",
+  ];
+
+  // Excel export gets every row (not just the first 10) and keeps Payment
+  // Date, since one exported month still spans many distinct days.
+  var DOWNLOAD_RAW_COLUMNS = [
+    "payment_date", "branch", "sls_grp_desc", "brand",
+    "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
+    "payment_inc_tax",
+  ];
+  var DOWNLOAD_RAW_COLUMN_LABELS = [
     "Payment Date", "Branch", "Sls Grp Desc", "Brand",
     "Mch3", "Mch2", "Mch1", "Mc", "Article Id", "Article Name Th", "Item Flag",
     "Payment Inc Tax",
   ];
 
-  function rawRowsForMonth(selectedMonth) {
-    return RAW_SAMPLE_ROWS.filter(function (r) {
-      var d = new Date(r.payment_date);
-      if (isNaN(d)) return false;
-      var monthKey = d.getFullYear() + "-" + pad2(d.getMonth() + 1);
-      return monthKey === selectedMonth;
-    }).slice(0, 10);
-  }
-
-  function renderRawDataTable(selectedMonth) {
+  function renderRawDataTable(rows) {
     var tbody = document.getElementById("rawDataTableBody");
     tbody.innerHTML = "";
-    rawRowsForMonth(selectedMonth).forEach(function (r) {
+    rows.slice(0, 10).forEach(function (r) {
       var tr = document.createElement("tr");
       RAW_COLUMNS.forEach(function (col) {
         var td = document.createElement("td");
@@ -1882,6 +1888,20 @@ html, body {
       });
       tbody.appendChild(tr);
     });
+  }
+
+  function showRawDataTableMessage(message, isError) {
+    var tbody = document.getElementById("rawDataTableBody");
+    tbody.innerHTML = "";
+    var tr = document.createElement("tr");
+    var td = document.createElement("td");
+    td.colSpan = RAW_COLUMNS.length;
+    td.style.textAlign = "center";
+    td.style.padding = "16px";
+    td.style.color = isError ? "var(--bad)" : "var(--text-muted)";
+    td.textContent = message;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
   }
 
   // ---------------------------------------------------------------------
@@ -1925,9 +1945,9 @@ html, body {
       dailyRows.push([d.payment_date, d.total]);
     });
 
-    var rawRows = [RAW_COLUMN_LABELS];
-    rawRowsForMonth(selectedMonth).forEach(function (r) {
-      rawRows.push(RAW_COLUMNS.map(function (col) { return r[col]; }));
+    var rawRows = [DOWNLOAD_RAW_COLUMN_LABELS];
+    (RAW_SAMPLE_ROWS || []).forEach(function (r) {
+      rawRows.push(DOWNLOAD_RAW_COLUMNS.map(function (col) { return r[col]; }));
     });
 
     var wb = XLSX.utils.book_new();
@@ -2225,6 +2245,83 @@ html, body {
     return rows;
   }
 
+  function findPaymentWorksheet() {
+    var dashboard = tableau.extensions.dashboardContent.dashboard;
+    var worksheet = dashboard.worksheets.find(function (w) { return w.name === WORKSHEET_NAME; });
+    if (!worksheet) {
+      var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
+      throw new Error('ไม่พบ worksheet ชื่อ "' + WORKSHEET_NAME + '" ใน dashboard นี้ (มี: ' + available + ")");
+    }
+    return worksheet;
+  }
+
+  // A single unfiltered-by-date row from the "Payment" worksheet, used only
+  // for the header's vendor name -- the worksheet is already scoped to one
+  // vendor by a separate parameter-driven filter, so any row carries the
+  // right vendor_name regardless of which month is currently selected.
+  // Clears any leftover Payment Date filter from a previous month-scoped
+  // detail fetch first, so this never comes back empty just because the
+  // selected month happens to have no data for the current vendor.
+  async function loadVendorNameSample() {
+    var worksheet = findPaymentWorksheet();
+    try {
+      await worksheet.clearFilterAsync("Payment Date");
+    } catch (err) {
+      // Nothing to clear (no filter applied yet) -- fine either way.
+    }
+    var result = await fetchWorksheetRows(WORKSHEET_NAME, FIELD_MAP, [], 1);
+    return result.rows.length ? result.rows[0] : null;
+  }
+
+  // Every real row for the selected month -- applies a live Payment Date
+  // range filter to the "Payment" worksheet first. Underlying-table reads
+  // always reflect whatever filters are currently active on the
+  // worksheet, so scoping to one month keeps the row count comfortably
+  // under the ~10,000 API cap even for a high-volume vendor, instead of
+  // needing an arbitrary, possibly-incomplete row cap across the full
+  // date range. The filter is session-local to this extension instance,
+  // not saved to the workbook, and stays applied (reflecting whichever
+  // month is currently selected) until the next month change overwrites it.
+  async function loadDetailRowsForMonth(selectedMonth) {
+    var worksheet = findPaymentWorksheet();
+    var parts = selectedMonth.split("-");
+    var year = Number(parts[0]);
+    var month = Number(parts[1]);
+    var startDate = new Date(year, month - 1, 1);
+    var endDate = new Date(year, month, 0); // last day of the selected month
+    await worksheet.applyRangeFilterAsync("Payment Date", { min: startDate, max: endDate });
+
+    var rows = await loadRealRowsFromWorksheet(0);
+    return rows;
+  }
+
+  // Orchestrates the on-screen preview table + Excel download data for the
+  // currently selected month: shows a loading state, fetches (real-data
+  // mode) or filters (sample-data mode), then renders. Runs independently
+  // of render() so a slow/failed detail fetch never blocks the rest of the
+  // dashboard (KPI, charts, trend) from updating on a month change.
+  async function loadAndRenderDetailForMonth(selectedMonth) {
+    if (!USING_REAL_DATA) {
+      RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
+      renderRawDataTable(RAW_SAMPLE_ROWS);
+      return;
+    }
+    showRawDataTableMessage("กำลังโหลดข้อมูล...", false);
+    try {
+      RAW_SAMPLE_ROWS = await loadDetailRowsForMonth(selectedMonth);
+    } catch (err) {
+      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch for ' + selectedMonth + ' failed —', err);
+      RAW_SAMPLE_ROWS = [];
+      showRawDataTableMessage("โหลดข้อมูลไม่สำเร็จ (" + err.message + ")", true);
+      return;
+    }
+    if (!RAW_SAMPLE_ROWS.length) {
+      showRawDataTableMessage("ไม่มีข้อมูลสำหรับเดือนนี้", false);
+      return;
+    }
+    renderRawDataTable(RAW_SAMPLE_ROWS);
+  }
+
   // Pulls one 2-dimensional (Month x category) sheet and groups it into
   // {monthKey: [{[dimKey]: name, total}, ...]}, sorted desc by total.
   async function loadDimensionSummary(worksheetName, dimFieldName, dimKey) {
@@ -2333,11 +2430,11 @@ html, body {
   // "Payment by Branch/Channel/MCH2" (pre-aggregated via getSummaryDataAsync,
   // immune to the row cap) are the source of truth for
   // months/branchByMonth/channelByMonth/mch2ByMonth. "Payment Daily" (also
-  // pre-aggregated) supplies dailyByMonth. "Payment" (transaction-level)
-  // only fills in the raw-detail sample and the header's vendor-name
-  // lookup -- best-effort, since a failure there degrades the dashboard
-  // (no raw detail table / vendor name) but doesn't block it, since the
-  // aggregated sheets are what actually drive every chart.
+  // pre-aggregated) supplies dailyByMonth. The header's vendor-name lookup
+  // and the raw detail table/download are both best-effort against the
+  // "Payment" worksheet -- a failure there degrades the dashboard (no
+  // vendor name / raw detail) but doesn't block it, since the aggregated
+  // sheets are what actually drive every chart.
   async function loadAllRealData() {
     var branchByMonth = await loadDimensionSummary(BRANCH_SUMMARY_WORKSHEET, "Branch", "branch");
     var channelByMonth = await loadDimensionSummary(CHANNEL_SUMMARY_WORKSHEET, "Sls Grp Desc", "channel");
@@ -2368,21 +2465,24 @@ html, body {
       console.error('Payment Dashboard: "' + DAILY_WORKSHEET + '" fetch failed (falling back to "' + WORKSHEET_NAME + '" for daily trend) —', err);
     }
 
-    var rawRows = [];
-    try {
-      rawRows = await loadRealRowsFromWorksheet(dailyFromDedicatedSheet ? 300 : 0);
-      var rawData = buildDataFromRows(rawRows);
-      if (!dailyFromDedicatedSheet) {
+    if (!dailyFromDedicatedSheet) {
+      try {
+        var rawRows = await loadRealRowsFromWorksheet(0);
+        var rawData = buildDataFromRows(rawRows);
         Object.keys(rawData.dailyByMonth).forEach(function (monthKey) {
           if (monthKey in data.dailyByMonth) data.dailyByMonth[monthKey] = rawData.dailyByMonth[monthKey];
         });
+      } catch (err) {
+        console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fallback daily-trend fetch failed —', err);
       }
-    } catch (err) {
-      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch failed (raw detail sample / vendor name will be limited) —', err);
     }
 
-    ALL_ROWS = rawRows.length ? rawRows : null;
-    RAW_SAMPLE_ROWS = rawRows.length ? rawRows : SAMPLE_RAW_ROWS;
+    try {
+      CURRENT_VENDOR_ROW_SAMPLE = await loadVendorNameSample();
+    } catch (err) {
+      console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" vendor-name sample fetch failed —', err);
+      CURRENT_VENDOR_ROW_SAMPLE = null;
+    }
 
     return data;
   }
@@ -2405,14 +2505,15 @@ html, body {
   }
 
   function vendorNameForId(vendorId) {
-    if (!ALL_ROWS) return null;
+    if (!CURRENT_VENDOR_ROW_SAMPLE) return null;
     var target = normalizeVendorId(vendorId);
-    var row = ALL_ROWS.find(function (r) { return normalizeVendorId(r.vendor_id) === target; });
-    return row ? row.vendor_name : null;
+    return normalizeVendorId(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) === target
+      ? CURRENT_VENDOR_ROW_SAMPLE.vendor_name
+      : null;
   }
 
   // TEMP DEBUG: when the lookup fails, show what we actually have on-screen
-  // (parameter value + a few real vendor_id samples) so it can be
+  // (parameter value + the worksheet's sample vendor_id) so it can be
   // screenshotted -- no need to open dev tools. Remove once this is fixed.
   function applyVendorNameHeader(vendorId) {
     var vendorName = vendorNameForId(vendorId);
@@ -2420,9 +2521,9 @@ html, body {
       document.getElementById("subtitleText").textContent = vendorName;
       return;
     }
-    var samples = (ALL_ROWS || []).slice(0, 5).map(function (r) { return r.vendor_id; }).join(", ");
     document.getElementById("subtitleText").textContent =
-      "DEBUG: param=" + JSON.stringify(vendorId) + " | sample vendor_id ในข้อมูล: " + samples;
+      "DEBUG: param=" + JSON.stringify(vendorId) + " | worksheet vendor_id=" +
+      (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)");
   }
 
   // Re-pulls every row from the "Payment" worksheet and re-renders. The
@@ -2436,6 +2537,7 @@ html, body {
       populateYearFilterOptions();
       populateMonthOptions();
       render(monthSelect.value);
+      await loadAndRenderDetailForMonth(monthSelect.value);
       hideStatus();
     } catch (err) {
       console.error("Payment Dashboard: reload after parameter change failed —", err);
@@ -2457,8 +2559,9 @@ html, body {
       vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, function (event) {
         event.getParameterAsync().then(function (param) {
           // Reload first, THEN look up the name -- looking it up against
-          // ALL_ROWS before the reload finishes reads the *previous*
-          // vendor's rows, so the header shows a stale name/ID mismatch.
+          // CURRENT_VENDOR_ROW_SAMPLE before the reload finishes reads the
+          // *previous* vendor's row, so the header shows a stale name/ID
+          // mismatch.
           reloadAndRender().then(function () {
             applyVendorNameHeader(param.currentValue.value);
           });
@@ -2494,14 +2597,14 @@ html, body {
       }
     }
 
+    var loadedReal = false;
     if (insideTableau) {
       showStatus("กำลังโหลดข้อมูลจาก Tableau...", false);
       try {
         DATA = await loadAllRealData();
         USING_REAL_DATA = true;
+        loadedReal = true;
         document.getElementById("subtitleText").textContent = "Vendor Name";
-        wireVendorNameFromParameter();
-        hideStatus();
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
@@ -2516,6 +2619,14 @@ html, body {
     populateYearFilterOptions();
     populateMonthOptions();
     render(monthSelect.value);
+
+    if (loadedReal) {
+      await loadAndRenderDetailForMonth(monthSelect.value);
+      wireVendorNameFromParameter();
+      hideStatus();
+    } else {
+      renderRawDataTable(RAW_SAMPLE_ROWS);
+    }
   }
 
   init();
