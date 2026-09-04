@@ -812,7 +812,9 @@ html, body {
   var DATA;
   var BASE_DATA;
   var ALL_ROWS = null;
-  var SUMMARY_ROWS = null;
+  var SUMMARY_BRANCH_BY_MONTH = null;
+  var SUMMARY_CHANNEL_BY_MONTH = null;
+  var SUMMARY_MCH2_BY_MONTH = null;
   var USING_REAL_DATA = false;
   var LAST_LOAD_DIAGNOSTICS = ""; // TEMP DEBUG
 
@@ -950,14 +952,37 @@ html, body {
     };
   }
 
-  // Real data: re-aggregate from SUMMARY_ROWS (Tableau's own pre-aggregated
-  // Payment Summary sheet -- exact, and immune to the 10k-row cap that
-  // transaction-level data can hit), then overlay dailyByMonth from
-  // whatever the raw "Payment" rows cover for that same branch (best
-  // effort; may be incomplete for months the cap dropped).
+  // Real data: the Branch breakdown is filtered exactly from
+  // SUMMARY_BRANCH_BY_MONTH (Tableau's own pre-aggregated Month x Branch
+  // sheet, immune to the row cap). Channel/MCH2 have no Branch dimension
+  // in their own summary sheets, so a specific branch falls back to
+  // re-aggregating them from the raw "Payment" rows for that branch
+  // (best-effort, same cap caveat as dailyByMonth below); "All" branches
+  // uses the exact summary breakdowns directly.
   function applyBranchFilterReal(branch) {
-    var summaryRows = branch === ALL_BRANCHES_VALUE ? SUMMARY_ROWS : SUMMARY_ROWS.filter(function (r) { return r.branch === branch; });
-    var partial = buildDataFromSummaryRows(summaryRows);
+    var branchByMonth = {};
+    Object.keys(SUMMARY_BRANCH_BY_MONTH).forEach(function (monthKey) {
+      var rows = SUMMARY_BRANCH_BY_MONTH[monthKey];
+      branchByMonth[monthKey] = branch === ALL_BRANCHES_VALUE
+        ? rows
+        : rows.filter(function (r) { return r.branch === branch; });
+    });
+
+    var channelByMonth, mch2ByMonthRaw;
+    if (branch === ALL_BRANCHES_VALUE) {
+      channelByMonth = SUMMARY_CHANNEL_BY_MONTH;
+      mch2ByMonthRaw = SUMMARY_MCH2_BY_MONTH;
+    } else if (ALL_ROWS) {
+      var rawForBranch = ALL_ROWS.filter(function (r) { return r.branch === branch; });
+      var rawPartial = buildDataFromRows(rawForBranch);
+      channelByMonth = rawPartial.channelByMonth;
+      mch2ByMonthRaw = rawPartial.mch2ByMonth; // buildDataFromRows already top10+"อื่นๆ" buckets this
+    } else {
+      channelByMonth = {};
+      mch2ByMonthRaw = {};
+    }
+
+    var partial = buildDataFromDimensionSummaries(branchByMonth, channelByMonth, mch2ByMonthRaw);
 
     if (ALL_ROWS) {
       var rawRows = branch === ALL_BRANCHES_VALUE ? ALL_ROWS : ALL_ROWS.filter(function (r) { return r.branch === branch; });
@@ -2015,23 +2040,17 @@ html, body {
   // ---------------------------------------------------------------------
 
   var WORKSHEET_NAME = "Payment";
-  var SUMMARY_WORKSHEET_NAME = "Payment Summary";
 
-  // "Payment Summary" is pre-aggregated by Tableau (Month x Branch x
-  // Channel x MCH2), so it stays well under the ~10,000-row cap that
-  // getUnderlyingTableDataAsync silently truncates at -- unlike pulling
-  // 2 years of transaction-level rows from "Payment" for a high-volume
-  // vendor. It's the authoritative source for months/branchByMonth/
-  // channelByMonth/mch2ByMonth; "Payment" is only still used for the
-  // Raw Detail table/export and for dailyByMonth (best-effort: whatever
-  // months happen to survive that worksheet's own 10k-row cap).
-  var SUMMARY_FIELD_MAP = {
-    month: "MONTH(Payment Date)",
-    branch: "Branch",
-    sls_grp_desc: "Sls Grp Desc",
-    mch2: "Mch2",
-    payment_inc_tax: "Payment Inc Tax",
-  };
+  // Combining Month x Branch x Channel x MCH2 in one crosstab still hit the
+  // 10,000-row cap for high-diversity vendors (cardinality multiplies
+  // across all 4 dimensions). Three separate 2-dimensional sheets (Month x
+  // one category each) keep every one of them small regardless of vendor
+  // diversity, since we only ever need one category breakdown at a time.
+  var BRANCH_SUMMARY_WORKSHEET = "Payment by Branch";
+  var CHANNEL_SUMMARY_WORKSHEET = "Payment by Channel";
+  var MCH2_SUMMARY_WORKSHEET = "Payment by MCH2";
+  var MONTH_FIELD_NAME = "MONTH(Payment Date)";
+  var PAYMENT_FIELD_NAME = "Payment Inc Tax";
 
   var FIELD_MAP = {
     vendor_id: "Vendor Id",
@@ -2132,7 +2151,11 @@ html, body {
   // be backed by more than one logical table via a join/blend, and
   // blindly using tables[0] can silently read the wrong one), fetches all
   // its rows, and maps them from fieldMap keys -> raw .value.
-  async function fetchWorksheetRows(worksheetName, fieldMap) {
+  // rawKeys: fieldMap keys to keep as the raw DataValue object instead of
+  // resolving .value -- needed for a discrete date-part field, where the
+  // caller has to fall back to .formattedValue if .value doesn't parse.
+  async function fetchWorksheetRows(worksheetName, fieldMap, rawKeys) {
+    rawKeys = rawKeys || [];
     var dashboard = tableau.extensions.dashboardContent.dashboard;
     var worksheet = dashboard.worksheets.find(function (w) { return w.name === worksheetName; });
     if (!worksheet) {
@@ -2191,12 +2214,27 @@ html, body {
     var rows = dataTable.data.map(function (dataRow) {
       var row = {};
       Object.keys(fieldMap).forEach(function (key) {
-        row[key] = dataRow[colIndex[fieldMap[key]]].value;
+        var dv = dataRow[colIndex[fieldMap[key]]];
+        row[key] = rawKeys.indexOf(key) !== -1 ? dv : dv.value;
       });
       return row;
     });
 
     return { rows: rows, worksheet: worksheet, dataTable: dataTable };
+  }
+
+  // "MONTH(Payment Date)" is a discrete date-part dimension; its raw
+  // .value isn't guaranteed to be a plain parseable date the way a
+  // continuous date field's is (and a bare month number 1-12 would parse
+  // "successfully" as an epoch-adjacent date without ever throwing), so
+  // fall back to .formattedValue (e.g. "January 2025") whenever .value
+  // doesn't look like a real year.
+  function parseMonthDataValue(dataValue) {
+    var d = new Date(dataValue.value);
+    if (isNaN(d) || d.getFullYear() < 2000 || d.getFullYear() > 2100) {
+      d = new Date(dataValue.formattedValue);
+    }
+    return d;
   }
 
   async function loadRealRowsFromWorksheet() {
@@ -2235,149 +2273,84 @@ html, body {
     return rows;
   }
 
-  // "Month of Payment Date" is a discrete date-part dimension; its raw
-  // .value isn't guaranteed to be a plain parseable date the way a
-  // continuous date field's is, so fall back to parsing .formattedValue
-  // (e.g. "January 2025") if .value doesn't parse.
-  async function loadSummaryRowsFromWorksheet() {
-    var dashboard = tableau.extensions.dashboardContent.dashboard;
-    var worksheet = dashboard.worksheets.find(function (w) { return w.name === SUMMARY_WORKSHEET_NAME; });
-    if (!worksheet) {
-      var available = dashboard.worksheets.map(function (w) { return w.name; }).join(", ") || "ไม่มี worksheet เลย";
-      throw new Error('ไม่พบ worksheet ชื่อ "' + SUMMARY_WORKSHEET_NAME + '" ใน dashboard นี้ (มี: ' + available + ")");
-    }
+  // Pulls one 2-dimensional (Month x category) sheet and groups it into
+  // {monthKey: [{[dimKey]: name, total}, ...]}, sorted desc by total.
+  async function loadDimensionSummary(worksheetName, dimFieldName, dimKey) {
+    var fieldMap = { month: MONTH_FIELD_NAME, payment_inc_tax: PAYMENT_FIELD_NAME };
+    fieldMap[dimKey] = dimFieldName;
 
-    var tables = await worksheet.getUnderlyingTablesAsync();
-    if (!tables.length) {
-      throw new Error('worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มี underlying table');
-    }
+    var result = await fetchWorksheetRows(worksheetName, fieldMap, ["month"]);
 
-    var neededFields = Object.keys(SUMMARY_FIELD_MAP).map(function (key) { return SUMMARY_FIELD_MAP[key]; });
-    var chosenTableId = null;
-    var tableReport = [];
-    for (var i = 0; i < tables.length; i++) {
-      var peek = await worksheet.getUnderlyingTableDataAsync(tables[i].id, {
-        maxRows: 1,
-        ignoreSelection: true,
-        includeAllColumns: true,
+    var totals = {}; // monthKey -> { name -> total }
+    result.rows.forEach(function (r) {
+      var monthDate = parseMonthDataValue(r.month);
+      var monthKey = monthDate.getFullYear() + "-" + pad2(monthDate.getMonth() + 1);
+      var name = r[dimKey] || "(ไม่ระบุ)";
+      var amount = Number(r.payment_inc_tax) || 0;
+      totals[monthKey] = totals[monthKey] || {};
+      totals[monthKey][name] = (totals[monthKey][name] || 0) + amount;
+    });
+
+    var byMonth = {};
+    Object.keys(totals).forEach(function (monthKey) {
+      var arr = Object.keys(totals[monthKey]).map(function (name) {
+        var o = { total: totals[monthKey][name] };
+        o[dimKey] = name;
+        return o;
       });
-      var peekFieldNames = peek.columns.map(function (col) { return col.fieldName; });
-      var hasAll = neededFields.every(function (f) { return peekFieldNames.indexOf(f) !== -1; });
-      tableReport.push(
-        (tables[i].caption || tables[i].id) + " (rows=" + peek.totalRowCount +
-        (hasAll ? ", HAS ALL FIELDS" : ", fields=[" + peekFieldNames.join(", ") + "]") + ")"
-      );
-      if (hasAll && chosenTableId === null) chosenTableId = tables[i].id;
-    }
-    if (chosenTableId === null) {
-      throw new Error(
-        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มี underlying table ไหนมีครบทุก field ที่ต้องการ (' +
-        neededFields.join(", ") + ") — table ที่มี: " + tableReport.join(" | ")
-      );
-    }
-
-    var dataTable = await worksheet.getUnderlyingTableDataAsync(chosenTableId, {
-      maxRows: 0,
-      ignoreSelection: true,
-      includeAllColumns: true,
+      arr.sort(function (a, b) { return b.total - a.total; });
+      byMonth[monthKey] = arr;
     });
 
-    var colIndex = {};
-    dataTable.columns.forEach(function (col) { colIndex[col.fieldName] = col.index; });
-
-    var missing = Object.keys(SUMMARY_FIELD_MAP).filter(function (key) {
-      return !(SUMMARY_FIELD_MAP[key] in colIndex);
-    });
-    if (missing.length) {
-      throw new Error(
-        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" ขาด field: ' +
-        missing.map(function (k) { return SUMMARY_FIELD_MAP[k]; }).join(", ") +
-        " — field ที่มีจริง: " + dataTable.columns.map(function (c) { return c.fieldName; }).join(", ")
-      );
-    }
-
-    var monthColIndex = colIndex[SUMMARY_FIELD_MAP.month];
-
-    var rows = dataTable.data.map(function (dataRow) {
-      var row = {};
-      Object.keys(SUMMARY_FIELD_MAP).forEach(function (key) {
-        row[key] = dataRow[colIndex[SUMMARY_FIELD_MAP[key]]].value;
-      });
-      row.payment_inc_tax = Number(row.payment_inc_tax) || 0;
-
-      var monthDataValue = dataRow[monthColIndex];
-      var monthDate = new Date(monthDataValue.value);
-      // If .value is just a bare month number (1-12) rather than a real
-      // date, new Date(1) "succeeds" (parses as an epoch-adjacent
-      // timestamp) without ever throwing -- guard against that silently
-      // wrong case too, not just outright NaN.
-      if (isNaN(monthDate) || monthDate.getFullYear() < 2000 || monthDate.getFullYear() > 2100) {
-        monthDate = new Date(monthDataValue.formattedValue);
-      }
-      row._monthDate = monthDate; // used to derive monthKey; NaN if unparseable
-      return row;
-    });
-
-    var badMonth = rows.find(function (r) { return isNaN(r._monthDate); });
-    if (badMonth) {
-      throw new Error(
-        'worksheet "' + SUMMARY_WORKSHEET_NAME + '" field "' + SUMMARY_FIELD_MAP.month +
-        '" แปลงเป็นวันที่ไม่ได้ (ตัวอย่างค่า: ' + JSON.stringify(dataTable.data[0][monthColIndex]) + ")"
-      );
-    }
-
-    var monthKeysSeen = {};
-    rows.forEach(function (r) {
-      var k = r._monthDate.getFullYear() + "-" + pad2(r._monthDate.getMonth() + 1);
-      monthKeysSeen[k] = true;
-    });
     LAST_LOAD_DIAGNOSTICS +=
-      " | Summary: " + rows.length + " rows" +
-      (dataTable.isTotalRowCountLimited ? " CAPPED" : " (not capped, total=" + dataTable.totalRowCount + ")") +
-      ", months=[" + Object.keys(monthKeysSeen).sort().join(", ") + "]" +
-      ", raw month sample=" + JSON.stringify(dataTable.data[0][monthColIndex]);
+      " | " + worksheetName + ": " + result.rows.length + " rows" +
+      (result.dataTable.isTotalRowCountLimited ? " CAPPED" : " (total=" + result.dataTable.totalRowCount + ")") +
+      ", months=[" + Object.keys(byMonth).sort().join(", ") + "]";
 
-    return rows;
+    return byMonth;
   }
 
-  function buildDataFromSummaryRows(summaryRows) {
-    var byMonth = {};
-    summaryRows.forEach(function (r) {
-      var monthKey = r._monthDate.getFullYear() + "-" + pad2(r._monthDate.getMonth() + 1);
-      (byMonth[monthKey] = byMonth[monthKey] || []).push(r);
+  function buildDataFromDimensionSummaries(branchByMonth, channelByMonth, mch2ByMonthRaw) {
+    var mch2ByMonth = {};
+    Object.keys(mch2ByMonthRaw).forEach(function (monthKey) {
+      var arr = mch2ByMonthRaw[monthKey];
+      if (arr.length > 11) {
+        var top10 = arr.slice(0, 10);
+        var otherTotal = arr.slice(10).reduce(function (a, r) { return a + r.total; }, 0);
+        top10.push({ mch2: "อื่นๆ", total: otherTotal });
+        mch2ByMonth[monthKey] = top10;
+      } else {
+        mch2ByMonth[monthKey] = arr;
+      }
     });
 
-    var monthKeys = Object.keys(byMonth).sort();
+    // Union of month keys across all 3 sheets, in case one has slightly
+    // different coverage than another; total per month comes from the
+    // branch breakdown (summing every branch's total = the grand total).
+    var allMonthKeys = {};
+    [branchByMonth, channelByMonth, mch2ByMonth].forEach(function (byMonth) {
+      Object.keys(byMonth).forEach(function (k) { allMonthKeys[k] = true; });
+    });
+    var monthKeys = Object.keys(allMonthKeys).sort();
+
     var months = monthKeys.map(function (monthKey) {
-      var rowsInMonth = byMonth[monthKey];
-      var total = rowsInMonth.reduce(function (a, r) { return a + r.payment_inc_tax; }, 0);
+      var total = (branchByMonth[monthKey] || []).reduce(function (a, r) { return a + r.total; }, 0);
       var parts = monthKey.split("-");
       return { month: monthKey, total: total, year: Number(parts[0]), monthNum: Number(parts[1]) };
     });
 
-    var branchByMonth = {}, channelByMonth = {}, mch2ByMonth = {};
-    monthKeys.forEach(function (monthKey) {
-      var rowsInMonth = byMonth[monthKey];
-      branchByMonth[monthKey] = groupSorted(rowsInMonth, "branch");
-      channelByMonth[monthKey] = groupSorted(rowsInMonth, "sls_grp_desc");
-
-      var mch2Sorted = groupSorted(rowsInMonth, "mch2");
-      if (mch2Sorted.length > 11) {
-        var top10 = mch2Sorted.slice(0, 10);
-        var otherTotal = mch2Sorted.slice(10).reduce(function (a, r) { return a + r.total; }, 0);
-        top10.push({ mch2: "อื่นๆ", total: otherTotal });
-        mch2ByMonth[monthKey] = top10;
-      } else {
-        mch2ByMonth[monthKey] = mch2Sorted;
-      }
-    });
-
-    // dailyByMonth isn't available from this monthly-grain source; filled
+    // dailyByMonth isn't available from these monthly-grain sheets; filled
     // in separately from the "Payment" worksheet's rows where available.
     var dailyByMonth = {};
     monthKeys.forEach(function (monthKey) { dailyByMonth[monthKey] = []; });
 
-    return { months: months, dailyByMonth: dailyByMonth, branchByMonth: branchByMonth, channelByMonth: channelByMonth, mch2ByMonth: mch2ByMonth };
+    return {
+      months: months,
+      dailyByMonth: dailyByMonth,
+      branchByMonth: branchByMonth,
+      channelByMonth: channelByMonth,
+      mch2ByMonth: mch2ByMonth,
+    };
   }
 
   // "Payment Summary" (pre-aggregated, immune to the row cap) is the
@@ -2390,10 +2363,15 @@ html, body {
   async function loadAllRealData() {
     LAST_LOAD_DIAGNOSTICS = "";
 
-    var summaryRows = await loadSummaryRowsFromWorksheet();
-    if (!summaryRows.length) throw new Error('worksheet "' + SUMMARY_WORKSHEET_NAME + '" ไม่มีข้อมูล');
-    var data = buildDataFromSummaryRows(summaryRows);
-    SUMMARY_ROWS = summaryRows;
+    var branchByMonth = await loadDimensionSummary(BRANCH_SUMMARY_WORKSHEET, "Branch", "branch");
+    var channelByMonth = await loadDimensionSummary(CHANNEL_SUMMARY_WORKSHEET, "Sls Grp Desc", "channel");
+    var mch2ByMonth = await loadDimensionSummary(MCH2_SUMMARY_WORKSHEET, "Mch2", "mch2");
+    var data = buildDataFromDimensionSummaries(branchByMonth, channelByMonth, mch2ByMonth);
+    if (!data.months.length) throw new Error("ไม่มีข้อมูลใน Payment by Branch/Channel/MCH2 เลย");
+
+    SUMMARY_BRANCH_BY_MONTH = branchByMonth;
+    SUMMARY_CHANNEL_BY_MONTH = channelByMonth;
+    SUMMARY_MCH2_BY_MONTH = mch2ByMonth;
 
     var rawRows = [];
     try {
