@@ -332,16 +332,16 @@ html, body {
 .view-toggle-btn {
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  flex: none;
+  font-size: 11px;
   font-weight: 600;
   font-family: inherit;
-  padding: 5px 12px;
-  border-radius: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
   cursor: pointer;
-  margin-bottom: 10px;
 }
 
 .view-toggle-btn:hover {
@@ -564,8 +564,8 @@ html, body {
             <div class="panel-title">PAYMENT BY BRANCH</div>
             <div class="panel-subtitle" id="branchSubtitle">Payment ราย สาขา</div>
           </div>
+          <button type="button" class="view-toggle-btn" id="branchViewToggle" data-view="chart">View Table</button>
         </div>
-        <button type="button" class="view-toggle-btn" id="branchViewToggle" data-view="chart">View Table</button>
         <div id="branchList" class="bar-list"></div>
         <div class="table-wrap" id="branchTableWrap" hidden>
           <table class="data-table">
@@ -588,8 +588,8 @@ html, body {
             <div class="panel-title">PAYMENT BY MCH2</div>
             <div class="panel-subtitle" id="mch2Subtitle">Payment ราย MCH2</div>
           </div>
+          <button type="button" class="view-toggle-btn" id="mch2ViewToggle" data-view="chart">View Table</button>
         </div>
-        <button type="button" class="view-toggle-btn" id="mch2ViewToggle" data-view="chart">View Table</button>
         <div id="mch2List" class="bar-list"></div>
         <div class="table-wrap" id="mch2TableWrap" hidden>
           <table class="data-table">
@@ -612,8 +612,8 @@ html, body {
             <div class="panel-title">PAYMENT BY CHANNEL</div>
             <div class="panel-subtitle" id="channelSubtitle">Payment ราย ช่องทางการขาย</div>
           </div>
+          <button type="button" class="view-toggle-btn" id="channelViewToggle" data-view="chart">View Table</button>
         </div>
-        <button type="button" class="view-toggle-btn" id="channelViewToggle" data-view="chart">View Table</button>
         <div id="channelChartWrap" class="channel-body">
           <div class="channel-top-legend" id="channelTopLegend"></div>
           <svg class="channel-donut-svg" id="channelDonutSvg" viewBox="0 0 460 300" preserveAspectRatio="xMidYMid meet"></svg>
@@ -830,12 +830,6 @@ html, body {
     return Math.round(n).toLocaleString("en-US");
   }
 
-  function monthLabel(monthKey) {
-    var parts = monthKey.split("-");
-    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
-    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-  }
-
   function formatMillions(n) {
     if (!isFinite(n)) return "-";
     return (n / 1e6).toFixed(2) + "M";
@@ -910,7 +904,7 @@ html, body {
     months.forEach(function (m) {
       var opt = document.createElement("option");
       opt.value = m.month;
-      opt.textContent = monthLabel(m.month);
+      opt.textContent = monthShortLabel(m.month);
       monthSelect.appendChild(opt);
     });
     monthSelect.value = months.length ? months[months.length - 1].month : "";
