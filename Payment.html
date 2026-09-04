@@ -115,8 +115,8 @@ html, body {
   color: #fff;
   border: none;
   padding: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .filter-group select option { color: #14213d; }
@@ -904,7 +904,7 @@ html, body {
     months.forEach(function (m) {
       var opt = document.createElement("option");
       opt.value = m.month;
-      opt.textContent = monthShortLabel(m.month);
+      opt.textContent = monthFullName(m.month);
       monthSelect.appendChild(opt);
     });
     monthSelect.value = months.length ? months[months.length - 1].month : "";
