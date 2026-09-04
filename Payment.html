@@ -541,7 +541,7 @@ html, body {
 
       <div class="panel">
         <div class="panel-title">MONTHLY PAYMENT (YTD)</div>
-        <div class="panel-subtitle" id="ytdSubtitle">สะสมตั้งแต่ต้นปีถึงเดือนที่เลือก, THB</div>
+        <div class="panel-subtitle" id="ytdSubtitle">Summary</div>
         <svg class="ytd-svg" id="ytdChartSvg" viewBox="0 0 640 190" preserveAspectRatio="none"></svg>
       </div>
     </div>
@@ -1751,8 +1751,9 @@ html, body {
     var ytdMonths = getYtdMonths(selectedMonth);
     var selectedEntry = ytdMonths[ytdMonths.length - 1];
 
+    var ytdStartMonth = ytdMonths[0].month;
     document.getElementById("ytdSubtitle").textContent =
-      "สะสมตั้งแต่ต้นปี " + (selectedEntry.year + 543) + " ถึง " + monthLabel(selectedMonth) + ", THB";
+      "Summary : " + monthShortLabel(ytdStartMonth) + "-" + monthShortLabel(selectedMonth);
 
     var svg = document.getElementById("ytdChartSvg");
     svg.innerHTML = "";
