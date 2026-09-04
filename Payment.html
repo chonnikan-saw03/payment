@@ -532,7 +532,7 @@ html, body {
     <div class="charts-row-2">
       <div class="panel">
         <div class="panel-title">DAILY TREND</div>
-        <div class="panel-subtitle">Payment รายวันในเดือนที่เลือก, THB</div>
+        <div class="panel-subtitle" id="trendSubtitle">Payment Daily</div>
         <div class="trend-wrap">
           <svg class="trend-svg" id="trendSvg" viewBox="0 0 640 190" preserveAspectRatio="none"></svg>
           <div class="trend-tooltip" id="trendTooltip"></div>
@@ -578,7 +578,7 @@ html, body {
         <div class="panel-header">
           <div>
             <div class="panel-title">PAYMENT BY MCH2</div>
-            <div class="panel-subtitle">หมวดหมู่สินค้า MCH2 (Top 10 + อื่นๆ) ในเดือนที่เลือก, THB</div>
+            <div class="panel-subtitle" id="mch2Subtitle">Payment ราย MCH2</div>
           </div>
         </div>
         <div class="view-toggle" id="mch2ViewToggle">
@@ -844,6 +844,12 @@ html, body {
     var parts = monthKey.split("-");
     var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     return d.toLocaleDateString("en-US", { month: "short" });
+  }
+
+  function monthFullName(monthKey) {
+    var parts = monthKey.split("-");
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
+    return d.toLocaleDateString("en-US", { month: "long" });
   }
 
   // Catmull-Rom-to-Bezier spline through every point, so the trend reads as
@@ -1848,6 +1854,10 @@ html, body {
   // ---------------------------------------------------------------------
 
   function render(selectedMonth) {
+    var monthName = monthFullName(selectedMonth);
+    document.getElementById("trendSubtitle").textContent = "Payment Daily : " + monthName;
+    document.getElementById("mch2Subtitle").textContent = "Payment ราย MCH2 : " + monthName;
+
     renderKpi(selectedMonth);
     renderBranchList(selectedMonth);
     renderBranchTable(selectedMonth);
