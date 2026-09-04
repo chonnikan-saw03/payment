@@ -1811,12 +1811,13 @@ html, body {
     applyMch2View();
     renderTrend(selectedMonth);
     renderYtdChart(selectedMonth);
+    renderRawDataTable(selectedMonth);
   }
 
   // ---------------------------------------------------------------------
-  // Raw payment detail — 10 real rows queried from
-  // ds_vdo_payment_article_fact, every column, shown as-is (not filtered
-  // by the month selector; it's a schema/data preview, not an aggregate).
+  // Raw payment detail — up to 10 real rows queried from
+  // ds_vdo_payment_article_fact whose Payment Date falls in the currently
+  // selected month, every column, shown as-is.
   // ---------------------------------------------------------------------
 
   // Fallback preview rows, used only when there's no real Tableau host to
@@ -1834,14 +1835,16 @@ html, body {
     { vendor_id: "$", vendor_name: "NA", payment_date: "2026-08-31", branch: "สาขาอุดรธานี", sls_grp_desc: "Anyhome", brand: "ROCKA", mch3: "ห้องครัว", mch2: "สินค้าสั่งพิเศษ", mch1: "สินค้าสั่งพิเศษ", mc: "สินค้าสั่งพิเศษ", article_id: "1359068", article_name_th: "E23K-65 ชุดแผ่นปิดข้างตู้ 58-86 สีขาว", item_flag: "FAST", payment_inc_tax: 0, start_date: "2026-08-31", end_date: "2026-08-31" },
   ];
 
-  // Populated by init() -- SAMPLE_RAW_ROWS as a preview fallback, or the
-  // first 10 real rows pulled from the "Payment" worksheet in Tableau.
+  // Populated by init() -- SAMPLE_RAW_ROWS as a preview fallback, or up to
+  // 300 real rows pulled from the "Payment" worksheet in Tableau. Not all
+  // 300 are shown at once; rawRowsForMonth() below filters this pool down
+  // to the selected month and takes the first 10 matches.
   var RAW_SAMPLE_ROWS;
 
   // Same column set for the on-screen preview table and the "Payment
-  // Detail" tab of the Excel download -- both read from RAW_SAMPLE_ROWS
-  // (the first 10 rows), just rendered into different places. Skips Start
-  // Date/End Date.
+  // Detail" tab of the Excel download -- both read from
+  // rawRowsForMonth(selectedMonth), just rendered into different places.
+  // Skips Start Date/End Date.
   var RAW_COLUMNS = [
     "payment_date", "branch", "sls_grp_desc", "brand",
     "mch3", "mch2", "mch1", "mc", "article_id", "article_name_th", "item_flag",
@@ -1853,10 +1856,19 @@ html, body {
     "Payment Inc Tax",
   ];
 
-  function renderRawDataTable() {
+  function rawRowsForMonth(selectedMonth) {
+    return RAW_SAMPLE_ROWS.filter(function (r) {
+      var d = new Date(r.payment_date);
+      if (isNaN(d)) return false;
+      var monthKey = d.getFullYear() + "-" + pad2(d.getMonth() + 1);
+      return monthKey === selectedMonth;
+    }).slice(0, 10);
+  }
+
+  function renderRawDataTable(selectedMonth) {
     var tbody = document.getElementById("rawDataTableBody");
     tbody.innerHTML = "";
-    RAW_SAMPLE_ROWS.forEach(function (r) {
+    rawRowsForMonth(selectedMonth).forEach(function (r) {
       var tr = document.createElement("tr");
       RAW_COLUMNS.forEach(function (col) {
         var td = document.createElement("td");
@@ -1914,7 +1926,7 @@ html, body {
     });
 
     var rawRows = [RAW_COLUMN_LABELS];
-    RAW_SAMPLE_ROWS.forEach(function (r) {
+    rawRowsForMonth(selectedMonth).forEach(function (r) {
       rawRows.push(RAW_COLUMNS.map(function (col) { return r[col]; }));
     });
 
@@ -2370,7 +2382,7 @@ html, body {
     }
 
     ALL_ROWS = rawRows.length ? rawRows : null;
-    RAW_SAMPLE_ROWS = rawRows.length ? rawRows.slice(0, 10) : SAMPLE_RAW_ROWS;
+    RAW_SAMPLE_ROWS = rawRows.length ? rawRows : SAMPLE_RAW_ROWS;
 
     return data;
   }
@@ -2423,7 +2435,6 @@ html, body {
       DATA = await loadAllRealData();
       populateYearFilterOptions();
       populateMonthOptions();
-      renderRawDataTable();
       render(monthSelect.value);
       hideStatus();
     } catch (err) {
@@ -2504,7 +2515,6 @@ html, body {
 
     populateYearFilterOptions();
     populateMonthOptions();
-    renderRawDataTable();
     render(monthSelect.value);
   }
 
