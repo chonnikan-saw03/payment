@@ -812,7 +812,6 @@ html, body {
   var SUMMARY_CHANNEL_BY_MONTH = null;
   var SUMMARY_MCH2_BY_MONTH = null;
   var USING_REAL_DATA = false;
-  var LAST_LOAD_DIAGNOSTICS = ""; // TEMP DEBUG
 
   // ---------------------------------------------------------------------
   // Formatting helpers
@@ -2185,35 +2184,6 @@ html, body {
     var result = await fetchWorksheetRows(WORKSHEET_NAME, FIELD_MAP, [], maxRows);
     var rows = result.rows;
     rows.forEach(function (r) { r.payment_inc_tax = Number(r.payment_inc_tax) || 0; });
-
-    // TEMP DEBUG: which table got picked, how many rows each table has, the
-    // actual date range of what we loaded, how many DISTINCT vendors show
-    // up (1 would mean the worksheet really is vendor-filtered; many means
-    // it isn't, and 10000 rows is likely an API cap silently truncating
-    // the full multi-vendor dataset), and whatever filters Tableau reports
-    // as actually active on the worksheet right now.
-    var dates = rows.map(function (r) { return new Date(r.payment_date); }).filter(function (d) { return !isNaN(d); });
-    var minDate = dates.length ? new Date(Math.min.apply(null, dates)) : null;
-    var maxDate = dates.length ? new Date(Math.max.apply(null, dates)) : null;
-    var distinctVendors = {};
-    rows.forEach(function (r) { distinctVendors[r.vendor_id] = true; });
-    var vendorCount = Object.keys(distinctVendors).length;
-    var activeFilters = await result.worksheet.getFiltersAsync();
-    var filterReport = activeFilters.length
-      ? activeFilters.map(function (f) {
-          var n = (f.appliedValues && f.appliedValues.length) || null;
-          return f.fieldName + (n === null ? "" : " (" + n + " values)");
-        }).join(", ")
-      : "(none)";
-    var capNote = result.dataTable.isTotalRowCountLimited
-      ? " CAPPED (true total ≈ " + result.dataTable.totalRowCount + "+)"
-      : " (not capped, totalRowCount=" + result.dataTable.totalRowCount + ")";
-    LAST_LOAD_DIAGNOSTICS +=
-      " | Payment: " + rows.length + " rows" + capNote + ", " + vendorCount + " distinct vendor_id" +
-      " | Filters: " + filterReport +
-      " | Date range: " + (minDate ? minDate.toISOString().slice(0, 10) : "?") +
-      " to " + (maxDate ? maxDate.toISOString().slice(0, 10) : "?");
-
     return rows;
   }
 
@@ -2246,11 +2216,6 @@ html, body {
       byMonth[monthKey] = arr;
     });
 
-    LAST_LOAD_DIAGNOSTICS +=
-      " | " + worksheetName + ": " + result.rows.length + " rows" +
-      (result.dataTable.isTotalRowCountLimited ? " CAPPED" : " (total=" + result.dataTable.totalRowCount + ")") +
-      ", months=[" + Object.keys(byMonth).sort().join(", ") + "]";
-
     return byMonth;
   }
 
@@ -2280,10 +2245,6 @@ html, body {
         return { payment_date: dayKey, total: dayTotals[monthKey][dayKey] };
       });
     });
-
-    LAST_LOAD_DIAGNOSTICS +=
-      " | " + DAILY_WORKSHEET + ": " + result.rows.length + " rows" +
-      (result.dataTable.isTotalRowCountLimited ? " CAPPED" : " (total=" + result.dataTable.totalRowCount + ")");
 
     return dailyByMonth;
   }
@@ -2340,8 +2301,6 @@ html, body {
   // (no raw detail table / vendor name) but doesn't block it, since the
   // aggregated sheets are what actually drive every chart.
   async function loadAllRealData() {
-    LAST_LOAD_DIAGNOSTICS = "";
-
     var branchByMonth = await loadDimensionSummary(BRANCH_SUMMARY_WORKSHEET, "Branch", "branch");
     var channelByMonth = await loadDimensionSummary(CHANNEL_SUMMARY_WORKSHEET, "Sls Grp Desc", "channel");
     var mch2ByMonth = await loadDimensionSummary(MCH2_SUMMARY_WORKSHEET, "Mch2", "mch2");
@@ -2369,7 +2328,6 @@ html, body {
       dailyFromDedicatedSheet = true;
     } catch (err) {
       console.error('Payment Dashboard: "' + DAILY_WORKSHEET + '" fetch failed (falling back to "' + WORKSHEET_NAME + '" for daily trend) —', err);
-      LAST_LOAD_DIAGNOSTICS += " | " + DAILY_WORKSHEET + ": FAILED (" + err.message + ")";
     }
 
     var rawRows = [];
@@ -2383,7 +2341,6 @@ html, body {
       }
     } catch (err) {
       console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch failed (raw detail sample / vendor name will be limited) —', err);
-      LAST_LOAD_DIAGNOSTICS += " | Payment: FAILED (" + err.message + ")";
     }
 
     ALL_ROWS = rawRows.length ? rawRows : null;
@@ -2442,7 +2399,7 @@ html, body {
       populateMonthOptions();
       renderRawDataTable();
       render(monthSelect.value);
-      showStatus(LAST_LOAD_DIAGNOSTICS, false); // TEMP DEBUG
+      hideStatus();
     } catch (err) {
       console.error("Payment Dashboard: reload after parameter change failed —", err);
       showStatus("โหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ") — ข้อมูลที่แสดงอยู่อาจไม่ตรงกับ vendor ปัจจุบัน", true);
@@ -2507,7 +2464,7 @@ html, body {
         USING_REAL_DATA = true;
         document.getElementById("subtitleText").textContent = "Vendor Name";
         wireVendorNameFromParameter();
-        showStatus(LAST_LOAD_DIAGNOSTICS, false); // TEMP DEBUG
+        hideStatus();
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
