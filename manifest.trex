@@ -21,7 +21,7 @@
         เก่าค้างไว้แม้ remove/re-add extension แล้ว) การเปลี่ยนเลข v จะบังคับ
         ให้โหลดใหม่จริงๆ ถ้ายังเจอปัญหาแบบนี้อีก ให้เพิ่มเลข v ขึ้นอีก 1
       -->
-      <url>https://chonnikan-saw03.github.io/payment/Payment.html?v=6</url>
+      <url>https://chonnikan-saw03.github.io/payment/Payment.html?v=7</url>
     </source-location>
     <icon>iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=</icon>
     <permissions>
