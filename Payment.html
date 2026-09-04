@@ -1922,7 +1922,16 @@ html, body {
     return out;
   }
 
-  function downloadAllDetail() {
+  // Async because it needs the *current* selected month's detail rows,
+  // guaranteed fresh: RAW_SAMPLE_ROWS can still hold the previous month's
+  // rows if the user clicks Download right after switching months, before
+  // loadAndRenderDetailForMonth's background fetch for the new month has
+  // resolved -- exporting it as-is would silently label stale data under
+  // the wrong month's filename. Re-running loadAndRenderDetailForMonth
+  // here (real-data mode) reuses its DETAIL_LOAD_SEQ staleness guard, so
+  // whichever call -- this one or a concurrent background one -- started
+  // last is the one whose result actually lands in RAW_SAMPLE_ROWS.
+  async function downloadAllDetail() {
     var selectedMonth = monthSelect.value;
     var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
     var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
@@ -1944,6 +1953,13 @@ html, body {
     DATA.dailyByMonth[selectedMonth].forEach(function (d) {
       dailyRows.push([d.payment_date, d.total]);
     });
+
+    var downloadBtn = document.getElementById("downloadAllBtn");
+    if (USING_REAL_DATA) {
+      downloadBtn.disabled = true;
+      await loadAndRenderDetailForMonth(selectedMonth);
+      downloadBtn.disabled = false;
+    }
 
     var rawRows = [DOWNLOAD_RAW_COLUMN_LABELS];
     (RAW_SAMPLE_ROWS || []).forEach(function (r) {
@@ -2287,39 +2303,67 @@ html, body {
     var parts = selectedMonth.split("-");
     var year = Number(parts[0]);
     var month = Number(parts[1]);
-    var startDate = new Date(year, month - 1, 1);
-    var endDate = new Date(year, month, 0); // last day of the selected month
+    // Built with Date.UTC, not the local-timezone Date constructor: a
+    // local-time boundary (e.g. Sep 1 00:00 in UTC+7) crosses the
+    // extension bridge as its UTC equivalent (Aug 31 17:00Z), and if
+    // Tableau's range filter compares by UTC calendar date, that shifts
+    // the whole window back a day -- observed as the last day of the
+    // PREVIOUS month leaking into the export. Explicit UTC midnight for
+    // day 1 and 23:59:59 UTC for the last day keep the boundary on the
+    // intended calendar date regardless of the browser's local timezone.
+    var startDate = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0));
+    var endDate = new Date(Date.UTC(year, month, 0, 23, 59, 59)); // last day of the selected month
     await worksheet.applyRangeFilterAsync("Payment Date", { min: startDate, max: endDate });
 
     var rows = await loadRealRowsFromWorksheet(0);
     return rows;
   }
 
-  // Orchestrates the on-screen preview table + Excel download data for the
-  // currently selected month: shows a loading state, fetches (real-data
-  // mode) or filters (sample-data mode), then renders. Runs independently
-  // of render() so a slow/failed detail fetch never blocks the rest of the
-  // dashboard (KPI, charts, trend) from updating on a month change.
+  // The "Payment" worksheet's date filter is shared, mutable state -- if
+  // the user switches months again (or clicks Download) before an
+  // in-flight fetch for the previous month resolves, two calls can race:
+  // whichever's applyRangeFilterAsync+getUnderlyingTableDataAsync happens
+  // to interleave last "wins" the shared filter, so an older call can
+  // resolve with the NEWER month's rows, or resolve after a newer call
+  // and overwrite it with stale data. DETAIL_LOAD_SEQ makes each call
+  // check "am I still the most recently started request?" right before
+  // touching RAW_SAMPLE_ROWS/the DOM, so only the latest request's result
+  // is ever applied -- an outdated one is silently dropped either way.
+  var DETAIL_LOAD_SEQ = 0;
+
+  // Orchestrates the on-screen preview table for the currently selected
+  // month: shows a loading state, fetches (real-data mode) or filters
+  // (sample-data mode), then renders. Runs independently of render() so a
+  // slow/failed detail fetch never blocks the rest of the dashboard (KPI,
+  // charts, trend) from updating on a month change. The Excel download
+  // does its own independent fetch (see downloadAllDetail) rather than
+  // trusting RAW_SAMPLE_ROWS, since it can be clicked while this is
+  // still in flight for the newly selected month.
   async function loadAndRenderDetailForMonth(selectedMonth) {
+    var seq = ++DETAIL_LOAD_SEQ;
     if (!USING_REAL_DATA) {
       RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
       renderRawDataTable(RAW_SAMPLE_ROWS);
       return;
     }
     showRawDataTableMessage("กำลังโหลดข้อมูล...", false);
+    var rows;
     try {
-      RAW_SAMPLE_ROWS = await loadDetailRowsForMonth(selectedMonth);
+      rows = await loadDetailRowsForMonth(selectedMonth);
     } catch (err) {
+      if (seq !== DETAIL_LOAD_SEQ) return; // a newer request has since started
       console.error('Payment Dashboard: "' + WORKSHEET_NAME + '" fetch for ' + selectedMonth + ' failed —', err);
       RAW_SAMPLE_ROWS = [];
       showRawDataTableMessage("โหลดข้อมูลไม่สำเร็จ (" + err.message + ")", true);
       return;
     }
-    if (!RAW_SAMPLE_ROWS.length) {
+    if (seq !== DETAIL_LOAD_SEQ) return; // a newer request has since started
+    RAW_SAMPLE_ROWS = rows;
+    if (!rows.length) {
       showRawDataTableMessage("ไม่มีข้อมูลสำหรับเดือนนี้", false);
       return;
     }
-    renderRawDataTable(RAW_SAMPLE_ROWS);
+    renderRawDataTable(rows);
   }
 
   // Pulls one 2-dimensional (Month x category) sheet and groups it into
