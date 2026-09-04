@@ -1055,14 +1055,13 @@ html, body {
   function renderBranchList(selectedMonth) {
     var rows = DATA.branchByMonth[selectedMonth];
     var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
-    var maxVal = rows.length ? rows[0].total : 0;
 
     var container = document.getElementById("branchList");
     container.innerHTML = "";
 
     rows.forEach(function (r) {
       var share = total ? (r.total / total) * 100 : 0;
-      var barPct = maxVal ? (r.total / maxVal) * 100 : 0;
+      var barPct = share;
 
       var row = document.createElement("div");
       row.className = "branch-row";
@@ -1460,14 +1459,13 @@ html, body {
   function renderMch2List(selectedMonth) {
     var rows = DATA.mch2ByMonth[selectedMonth];
     var total = rows.reduce(function (a, r) { return a + r.total; }, 0);
-    var maxVal = rows.length ? Math.max.apply(null, rows.map(function (r) { return r.total; })) : 0;
 
     var container = document.getElementById("mch2List");
     container.innerHTML = "";
 
     rows.forEach(function (r) {
       var share = total ? (r.total / total) * 100 : 0;
-      var barPct = maxVal ? (r.total / maxVal) * 100 : 0;
+      var barPct = share;
 
       var row = document.createElement("div");
       row.className = "branch-row";
