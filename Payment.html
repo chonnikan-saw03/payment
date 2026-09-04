@@ -911,7 +911,11 @@ html, body {
       opt.textContent = y;
       yearFilter.appendChild(opt);
     });
-    yearFilter.value = ALL_YEARS_VALUE;
+    // Default to 2026 instead of "All Years" -- fall back to the latest
+    // available year if 2026 isn't in range for this vendor.
+    yearFilter.value = yearList.indexOf("2026") !== -1
+      ? "2026"
+      : (yearList.length ? yearList[yearList.length - 1] : ALL_YEARS_VALUE);
   }
 
   // Year narrows which months this offers ("All Years" = every month).
