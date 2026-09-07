@@ -79,12 +79,6 @@ html, body {
   letter-spacing: 0.3px;
 }
 
-.header-title .subtitle {
-  margin-top: 2px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.65);
-}
-
 .header-controls {
   display: flex;
   align-items: stretch;
@@ -234,8 +228,6 @@ html, body {
 .kpi-vendor-card {
   justify-content: flex-start;
   gap: 14px;
-  background: #fdf6d8;
-  border-color: rgba(180, 152, 26, 0.3);
 }
 
 .kpi-vendor-icon {
@@ -611,7 +603,6 @@ html, body {
       <div class="header-icon">฿</div>
       <div>
         <h1>PAYMENT DAILY REPORT</h1>
-        <div class="subtitle" id="subtitleText">Vendor Name · ตัวอย่าง (sample data)</div>
       </div>
     </div>
     <div class="header-controls">
@@ -2682,8 +2673,7 @@ html, body {
       : null;
   }
 
-  // Updates the header subtitle and the VENDOR KPI card together, since
-  // both show the same vendor name/ID.
+  // Updates the VENDOR KPI card's name/ID.
   //
   // TEMP DEBUG: when the lookup fails, show what we actually have on-screen
   // (parameter value + the worksheet's sample vendor_id) so it can be
@@ -2692,12 +2682,10 @@ html, body {
     var vendorName = vendorNameForId(vendorId);
     document.getElementById("kpiVendorId").textContent = vendorId == null ? "-" : String(vendorId);
     if (vendorName) {
-      document.getElementById("subtitleText").textContent = vendorName;
       document.getElementById("kpiVendorName").textContent = vendorName;
       return;
     }
-    document.getElementById("kpiVendorName").textContent = "-";
-    document.getElementById("subtitleText").textContent =
+    document.getElementById("kpiVendorName").textContent =
       "DEBUG: param=" + JSON.stringify(vendorId) + " | worksheet vendor_id=" +
       (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)");
   }
@@ -2780,7 +2768,6 @@ html, body {
         DATA = await loadAllRealData();
         USING_REAL_DATA = true;
         loadedReal = true;
-        document.getElementById("subtitleText").textContent = "Vendor Name";
       } catch (err) {
         console.error("Payment Dashboard: falling back to sample data —", err);
         DATA = buildSampleData();
