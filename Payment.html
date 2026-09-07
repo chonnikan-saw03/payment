@@ -156,10 +156,15 @@ html, body {
   padding: 18px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  justify-content: flex-start;
+  gap: 14px;
   box-shadow: 0 1px 2px rgba(20, 33, 61, 0.04);
   margin-top: 8px;
+}
+
+.kpi-main {
+  min-width: 0;
+  flex: 1;
 }
 
 .kpi-main .label {
@@ -225,26 +230,18 @@ html, body {
 
 .kpi-row .kpi-card { margin-top: 0; }
 
-.kpi-vendor-card {
-  justify-content: flex-start;
-  gap: 14px;
-}
-
-.kpi-vendor-icon {
+.kpi-icon-circle {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(180, 152, 26, 0.18);
-  color: #8a7215;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
 }
 
-.kpi-vendor-card .kpi-main {
-  min-width: 0;
-}
+.kpi-icon-circle.tone-gold { background: rgba(180, 152, 26, 0.18); color: #8a7215; }
+.kpi-icon-circle.tone-blue { background: var(--accent-blue-tint); color: var(--accent-blue); }
 
 .kpi-vendor-card .kpi-main .value {
   font-size: 17px;
@@ -628,7 +625,7 @@ html, body {
 
     <div class="kpi-row">
       <div class="kpi-card kpi-vendor-card">
-        <div class="kpi-vendor-icon">
+        <div class="kpi-icon-circle tone-gold">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 21h18"></path>
             <path d="M5 21V7l7-4 7 4v14"></path>
@@ -643,6 +640,13 @@ html, body {
         </div>
       </div>
       <div class="kpi-card">
+        <div class="kpi-icon-circle tone-blue">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 20V10"></path>
+            <path d="M12 20V4"></path>
+            <path d="M18 20v-7"></path>
+          </svg>
+        </div>
         <div class="kpi-main">
           <div class="label">TOTAL PAYMENT MTD</div>
           <div class="value" id="kpiValue">-</div>
@@ -650,6 +654,12 @@ html, body {
         </div>
       </div>
       <div class="kpi-card">
+        <div class="kpi-icon-circle tone-blue">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 17l6-6 4 4 8-8"></path>
+            <path d="M17 7h4v4"></path>
+          </svg>
+        </div>
         <div class="kpi-main">
           <div class="label">TOTAL PAYMENT YTD</div>
           <div class="value" id="kpiYtdValue">-</div>
