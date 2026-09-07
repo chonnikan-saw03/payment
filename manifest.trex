@@ -2,7 +2,7 @@
 <manifest manifest-version="0.1" xmlns="http://www.tableau.com/xml/extension_manifest">
   <dashboard-extension id="com.boonthavorn.paymentdashboard" extension-version="1.0.0">
     <default-locale>en_US</default-locale>
-    <name>Payment Dashboard</name>
+    <name>Payment Daily Report</name>
     <description>
       สรุปมูลค่า payment รวม %growth เทียบเดือนก่อน trend รายวัน และ payment รายสาขา
       จาก boonthavorn-data-analytic.tableau.ds_vdo_payment_article_fact
