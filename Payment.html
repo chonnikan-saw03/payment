@@ -517,9 +517,11 @@ html, body {
 }
 
 /* Item Flag badge in the PAYMENT DETAIL table -- a colored dot + label in
-   a tinted pill, grouped by meaning: green = fast-moving, blue = normal,
-   amber = custom/special order, red = discontinued/clearance, gray =
-   inactive/no flag, teal = other internal code. See itemFlagClass(). */
+   a tinted pill, grouped by meaning: green = fast-moving, blue = regular,
+   violet = standard (kept distinct from blue since REGULAR/STANDARD are
+   the two most common values), amber = custom/special order, red =
+   discontinued/clearance, gray = inactive/no flag, teal = other internal
+   code. See itemFlagClass(). */
 .flag-badge {
   display: inline-flex;
   align-items: center;
@@ -543,6 +545,9 @@ html, body {
 
 .flag-blue { background: rgba(42, 111, 219, 0.12); color: #2a6fdb; }
 .flag-blue .dot { background: #2a6fdb; }
+
+.flag-violet { background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
+.flag-violet .dot { background: #7c3aed; }
 
 .flag-amber { background: rgba(217, 119, 6, 0.14); color: #b45309; }
 .flag-amber .dot { background: #d97706; }
@@ -1910,7 +1915,7 @@ html, body {
   var ITEM_FLAG_CLASS = {
     "FAST": "flag-green",
     "REGULAR": "flag-blue",
-    "STANDARD": "flag-blue",
+    "STANDARD": "flag-violet",
     "MTO": "flag-amber",
     "CUT TO SIZE": "flag-amber",
     "PROJECT": "flag-amber",
