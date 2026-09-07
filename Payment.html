@@ -216,9 +216,13 @@ html, body {
    dead space just because a sibling happens to have more content. */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   margin-top: 10px;
+}
+
+@media (max-width: 860px) {
+  .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 600px) {
@@ -226,6 +230,45 @@ html, body {
 }
 
 .kpi-row .kpi-card { margin-top: 0; }
+
+.kpi-vendor-card {
+  justify-content: flex-start;
+  gap: 14px;
+  background: #fdf6d8;
+  border-color: rgba(180, 152, 26, 0.3);
+}
+
+.kpi-vendor-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(180, 152, 26, 0.18);
+  color: #8a7215;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.kpi-vendor-card .kpi-main {
+  min-width: 0;
+}
+
+.kpi-vendor-card .kpi-main .value {
+  font-size: 17px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.kpi-vendor-card .kpi-main .delta {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.kpi-vendor-card .kpi-main .delta b {
+  font-weight: 700;
+  color: var(--text-primary);
+}
 
 .charts-row-2 {
   display: grid;
@@ -593,6 +636,21 @@ html, body {
     <div id="status" class="status hidden"></div>
 
     <div class="kpi-row">
+      <div class="kpi-card kpi-vendor-card">
+        <div class="kpi-vendor-icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21h18"></path>
+            <path d="M5 21V7l7-4 7 4v14"></path>
+            <path d="M9 21v-6h6v6"></path>
+            <path d="M9 10h.01M14 10h.01M9 14h.01M14 14h.01"></path>
+          </svg>
+        </div>
+        <div class="kpi-main">
+          <div class="label">VENDOR</div>
+          <div class="value" id="kpiVendorName">Vendor Name</div>
+          <div class="delta">Vendor ID : <b id="kpiVendorId">-</b></div>
+        </div>
+      </div>
       <div class="kpi-card">
         <div class="kpi-main">
           <div class="label">TOTAL PAYMENT MTD</div>
@@ -2624,15 +2682,21 @@ html, body {
       : null;
   }
 
+  // Updates the header subtitle and the VENDOR KPI card together, since
+  // both show the same vendor name/ID.
+  //
   // TEMP DEBUG: when the lookup fails, show what we actually have on-screen
   // (parameter value + the worksheet's sample vendor_id) so it can be
   // screenshotted -- no need to open dev tools. Remove once this is fixed.
-  function applyVendorNameHeader(vendorId) {
+  function applyVendorInfo(vendorId) {
     var vendorName = vendorNameForId(vendorId);
+    document.getElementById("kpiVendorId").textContent = vendorId == null ? "-" : String(vendorId);
     if (vendorName) {
       document.getElementById("subtitleText").textContent = vendorName;
+      document.getElementById("kpiVendorName").textContent = vendorName;
       return;
     }
+    document.getElementById("kpiVendorName").textContent = "-";
     document.getElementById("subtitleText").textContent =
       "DEBUG: param=" + JSON.stringify(vendorId) + " | worksheet vendor_id=" +
       (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)");
@@ -2666,7 +2730,7 @@ html, body {
         return;
       }
 
-      applyVendorNameHeader(vendorParam.currentValue.value);
+      applyVendorInfo(vendorParam.currentValue.value);
 
       vendorParam.addEventListener(tableau.TableauEventType.ParameterChanged, function (event) {
         event.getParameterAsync().then(function (param) {
@@ -2675,7 +2739,7 @@ html, body {
           // *previous* vendor's row, so the header shows a stale name/ID
           // mismatch.
           reloadAndRender().then(function () {
-            applyVendorNameHeader(param.currentValue.value);
+            applyVendorInfo(param.currentValue.value);
           });
         });
       });
