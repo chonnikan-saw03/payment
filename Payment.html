@@ -1642,20 +1642,11 @@ html, body {
     var values = daily.map(function (d) { return d.total; });
     var maxVal = Math.max.apply(null, values) * 1.1 || 1;
 
-    // Y-axis gridlines + labels
+    // Y-axis labels (no gridlines)
     var ticks = 4;
     for (var t = 0; t <= ticks; t++) {
       var yVal = (maxVal / ticks) * t;
       var y = padT + plotH - (yVal / maxVal) * plotH;
-
-      var gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      gridLine.setAttribute("x1", padL);
-      gridLine.setAttribute("x2", w - padR);
-      gridLine.setAttribute("y1", y);
-      gridLine.setAttribute("y2", y);
-      gridLine.style.stroke = "var(--gridline)";
-      gridLine.setAttribute("stroke-width", "1");
-      svg.appendChild(gridLine);
 
       var label = document.createElementNS("http://www.w3.org/2000/svg", "text");
       label.setAttribute("x", padL - 8);
@@ -1817,15 +1808,6 @@ html, body {
     for (var t = 0; t <= ticks; t++) {
       var yVal = (maxVal / ticks) * t;
       var y = padT + plotH - (yVal / maxVal) * plotH;
-
-      var gridLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      gridLine.setAttribute("x1", padL);
-      gridLine.setAttribute("x2", w - padR);
-      gridLine.setAttribute("y1", y);
-      gridLine.setAttribute("y2", y);
-      gridLine.style.stroke = "var(--gridline)";
-      gridLine.setAttribute("stroke-width", "1");
-      svg.appendChild(gridLine);
 
       var gridLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
       gridLabel.setAttribute("x", padL - 8);
