@@ -2063,6 +2063,7 @@ html, body {
   // whichever call -- this one or a concurrent background one -- started
   // last is the one whose result actually lands in RAW_SAMPLE_ROWS.
   async function downloadAllDetail() {
+    if (!DATA) return; // nothing to export -- dashboard is showing the empty skeleton
     var selectedMonth = monthSelect.value;
     var monthIdx = DATA.months.findIndex(function (m) { return m.month === selectedMonth; });
     var prevMonthKey = monthIdx > 0 ? DATA.months[monthIdx - 1].month : null;
@@ -2718,8 +2719,12 @@ html, body {
       await loadAndRenderDetailForMonth(monthSelect.value);
       hideStatus();
     } catch (err) {
-      console.error("Payment Dashboard: reload after parameter change failed —", err);
-      showStatus("โหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ") — ข้อมูลที่แสดงอยู่อาจไม่ตรงกับ vendor ปัจจุบัน", true);
+      // Reset instead of leaving the previous vendor's charts/numbers on
+      // screen -- under the new vendor's selection, stale data reads as
+      // wrong data, not just outdated data.
+      console.error("Payment Dashboard: no data to show for this vendor —", err);
+      resetToEmptySkeleton();
+      showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ")", true);
     }
   }
 
@@ -2760,6 +2765,47 @@ html, body {
     document.getElementById("status").className = "status hidden";
   }
 
+  // Clears every data-driven surface back to its blank starting state --
+  // used when a vendor genuinely has no data, or a real-data load/reload
+  // fails, so the dashboard never shows fabricated sample numbers next to
+  // (or in place of) a real vendor's data. Leaves the Year/Month filters
+  // empty too, since there's nothing real to populate them from.
+  function resetToEmptySkeleton() {
+    DATA = null;
+    yearFilter.innerHTML = "";
+    monthSelect.innerHTML = "";
+
+    document.getElementById("kpiValue").textContent = "-";
+    document.getElementById("kpiValue").removeAttribute("title");
+    document.getElementById("kpiDelta").className = "delta";
+    document.getElementById("kpiDelta").innerHTML = "";
+    document.getElementById("kpiYtdValue").textContent = "-";
+    document.getElementById("kpiYtdValue").removeAttribute("title");
+    document.getElementById("kpiYtdDelta").className = "delta";
+    document.getElementById("kpiYtdDelta").innerHTML = "";
+
+    document.getElementById("branchList").innerHTML = "";
+    document.getElementById("branchTableBody").innerHTML = "";
+    document.getElementById("branchSubtitle").textContent = "Payment ราย สาขา";
+
+    document.getElementById("channelTopLegend").innerHTML = "";
+    document.getElementById("channelDonutSvg").innerHTML = "";
+    document.getElementById("channelTableBody").innerHTML = "";
+    document.getElementById("channelSubtitle").textContent = "Payment ราย ช่องทางการขาย";
+
+    document.getElementById("mch2List").innerHTML = "";
+    document.getElementById("mch2TableBody").innerHTML = "";
+    document.getElementById("mch2Subtitle").textContent = "Payment ราย MCH2";
+
+    document.getElementById("trendSvg").innerHTML = "";
+    document.getElementById("trendSubtitle").textContent = "Payment Daily";
+
+    document.getElementById("ytdChartSvg").innerHTML = "";
+
+    RAW_SAMPLE_ROWS = [];
+    showRawDataTableMessage("ไม่มีข้อมูลสำหรับ Vendor นี้", false);
+  }
+
   async function init() {
     // Probe for a real Tableau host first. Opened directly as a preview
     // (GitHub Pages, the Claude artifact, a local file) there is no host to
@@ -2776,6 +2822,7 @@ html, body {
     }
 
     var loadedReal = false;
+    var hasData = true;
     if (insideTableau) {
       showStatus("กำลังโหลดข้อมูลจาก Tableau...", false);
       try {
@@ -2783,26 +2830,36 @@ html, body {
         USING_REAL_DATA = true;
         loadedReal = true;
       } catch (err) {
-        console.error("Payment Dashboard: falling back to sample data —", err);
-        DATA = buildSampleData();
-        RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
-        showStatus("โหลดข้อมูลจริงจาก Tableau ไม่สำเร็จ (" + err.message + ") — แสดง sample data แทน", true);
+        console.error("Payment Dashboard: no data to show —", err);
+        hasData = false;
+        resetToEmptySkeleton();
+        showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลจาก Tableau ไม่สำเร็จ (" + err.message + ")", true);
       }
     } else {
       DATA = buildSampleData();
       RAW_SAMPLE_ROWS = SAMPLE_RAW_ROWS;
     }
 
-    populateYearFilterOptions();
-    populateMonthOptions();
-    render(monthSelect.value);
+    if (hasData) {
+      populateYearFilterOptions();
+      populateMonthOptions();
+      render(monthSelect.value);
+    }
 
     if (loadedReal) {
       await loadAndRenderDetailForMonth(monthSelect.value);
-      wireVendorNameFromParameter();
-      hideStatus();
-    } else {
+    } else if (hasData) {
       renderRawDataTable(RAW_SAMPLE_ROWS);
+    }
+
+    // Wired regardless of whether this load succeeded, so switching to a
+    // vendor that DOES have data still works after an initial failure --
+    // otherwise the ParameterChanged listener would never get registered.
+    if (insideTableau) {
+      wireVendorNameFromParameter();
+    }
+    if (loadedReal) {
+      hideStatus();
     }
   }
 
