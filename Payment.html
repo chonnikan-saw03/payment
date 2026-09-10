@@ -2688,11 +2688,10 @@ html, body {
       : null;
   }
 
-  // Updates the VENDOR KPI card's name/ID.
-  //
-  // TEMP DEBUG: when the lookup fails, show what we actually have on-screen
-  // (parameter value + the worksheet's sample vendor_id) so it can be
-  // screenshotted -- no need to open dev tools. Remove once this is fixed.
+  // Updates the VENDOR KPI card's name/ID. When the lookup fails, shows a
+  // plain "-" (matching the rest of the empty-state look) instead of any
+  // debug text -- the mismatch detail still goes to the console for
+  // troubleshooting.
   function applyVendorInfo(vendorId) {
     var vendorName = vendorNameForId(vendorId);
     document.getElementById("kpiVendorId").textContent = vendorId == null ? "-" : String(vendorId);
@@ -2700,9 +2699,11 @@ html, body {
       document.getElementById("kpiVendorName").textContent = vendorName;
       return;
     }
-    document.getElementById("kpiVendorName").textContent =
-      "DEBUG: param=" + JSON.stringify(vendorId) + " | worksheet vendor_id=" +
-      (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)");
+    console.warn(
+      "Payment Dashboard: no vendor_name match for param=" + JSON.stringify(vendorId) +
+      " | worksheet vendor_id=" + (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)")
+    );
+    document.getElementById("kpiVendorName").textContent = "-";
   }
 
   // Re-pulls every row from the "Payment" worksheet and re-renders. The
