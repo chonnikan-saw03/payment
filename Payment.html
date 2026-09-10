@@ -556,13 +556,15 @@ html, body {
 }
 
 /* PAYMENT DETAIL has 11 columns including long Thai text (branch,
-   category, article names) -- let every column wrap and tighten padding
-   instead of forcing the table wider than the panel and triggering a
-   horizontal scrollbar. */
+   category, article names). Wrapping every column (like Branch/MCH2/
+   Channel below) reads fine on a wide desktop panel, but on a narrow
+   mobile screen there isn't enough width per column even for one word,
+   so text breaks one character per line -- unreadable. Keep text on one
+   line and let .table-wrap's existing overflow-x: auto handle it with a
+   horizontal scrollbar instead. */
 #paymentDetailTableWrap .data-table th,
 #paymentDetailTableWrap .data-table td {
-  white-space: normal;
-  word-break: break-word;
+  white-space: nowrap;
   padding-left: 8px;
   padding-right: 8px;
 }
