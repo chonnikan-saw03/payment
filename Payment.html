@@ -2724,7 +2724,7 @@ html, body {
       // wrong data, not just outdated data.
       console.error("Payment Dashboard: no data to show for this vendor —", err);
       resetToEmptySkeleton();
-      showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลใหม่ไม่สำเร็จ (" + err.message + ")", true);
+      showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลใหม่ไม่สำเร็จ", true);
     }
   }
 
@@ -2833,7 +2833,7 @@ html, body {
         console.error("Payment Dashboard: no data to show —", err);
         hasData = false;
         resetToEmptySkeleton();
-        showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลจาก Tableau ไม่สำเร็จ (" + err.message + ")", true);
+        showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลจาก Tableau ไม่สำเร็จ", true);
       }
     } else {
       DATA = buildSampleData();
