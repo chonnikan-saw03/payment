@@ -2694,8 +2694,8 @@ html, body {
   // troubleshooting.
   function applyVendorInfo(vendorId) {
     var vendorName = vendorNameForId(vendorId);
-    document.getElementById("kpiVendorId").textContent = vendorId == null ? "-" : String(vendorId);
     if (vendorName) {
+      document.getElementById("kpiVendorId").textContent = vendorId == null ? "-" : String(vendorId);
       document.getElementById("kpiVendorName").textContent = vendorName;
       return;
     }
@@ -2703,6 +2703,7 @@ html, body {
       "Payment Dashboard: no vendor_name match for param=" + JSON.stringify(vendorId) +
       " | worksheet vendor_id=" + (CURRENT_VENDOR_ROW_SAMPLE ? JSON.stringify(CURRENT_VENDOR_ROW_SAMPLE.vendor_id) : "(ไม่มีข้อมูล)")
     );
+    document.getElementById("kpiVendorId").textContent = "-";
     document.getElementById("kpiVendorName").textContent = "-";
   }
 
@@ -2725,7 +2726,7 @@ html, body {
       // wrong data, not just outdated data.
       console.error("Payment Dashboard: no data to show for this vendor —", err);
       resetToEmptySkeleton();
-      showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลใหม่ไม่สำเร็จ", true);
+      hideStatus();
     }
   }
 
@@ -2834,7 +2835,7 @@ html, body {
         console.error("Payment Dashboard: no data to show —", err);
         hasData = false;
         resetToEmptySkeleton();
-        showStatus("ไม่พบข้อมูลสำหรับ Vendor นี้ หรือโหลดข้อมูลจาก Tableau ไม่สำเร็จ", true);
+        hideStatus();
       }
     } else {
       DATA = buildSampleData();
